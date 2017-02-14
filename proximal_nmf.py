@@ -149,13 +149,15 @@ def ADMM(prox_f, step_f, prox_g, step_g, X, max_iter=1000, A=None, e_abs=1e-6, e
 def steps_AS(A,S,V=None):
     # TODO: optimize the dot products here and in grad_likelihood
     if V is None:
-        step_A = np.linalg.eigvals(np.dot(S, S.T)).max()
-        step_S = np.linalg.eigvals(np.dot(A.T, A)).max()
+        step_A = 1./np.linalg.eigvals(np.dot(S, S.T)).max()
+        step_S = 1./np.linalg.eigvals(np.dot(A.T, A)).max()
     else:
         VVT = np.dot(V,V.T)
         VTV = np.dot(V.T, V)
-        step_A = np.linalg.eigvals(np.dot(S, np.dot(VTV, S.T))).max()
-        step_S = np.linalg.eigvals(np.dot(A.T, np.dot(VVT, A))).max()
+        print VVT
+        print VTV
+        step_A = 1./np.linalg.eigvals(np.dot(S, np.dot(VTV, S.T))).max()
+        step_S = 1./np.linalg.eigvals(np.dot(A.T, np.dot(VVT, A))).max()
     return step_A, step_S
 
 
@@ -166,6 +168,7 @@ def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
     else:
         V = np.sqrt(W)
     step_A, step_S = steps_AS(A,S,V=V)
+    print step_A, step_S
 
     from functools import partial
     # define proximal operators:
@@ -196,6 +199,7 @@ def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
         # A: simple gradient method; need to rebind S each time
         prox_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_g_A, V=V, P=P)
         A = APGM(prox_A, A, step_A, max_iter=max_iter)
+        print A
 
         # A: either gradient or ADMM, depending on additional constraints
         prox_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_g_S, V=V, P=P)
