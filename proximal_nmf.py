@@ -82,7 +82,7 @@ def init_S(N, K):
 
 # accelerated proximal gradient method
 # Combettes 2009, Algorithm 3.6
-def APGM(prox, X, e_abs=1e-3, e_rel=1e-3, max_iter=1000):
+def APGM(prox, X, e_rel=1e-3, max_iter=1000):
     b,n = X.shape
     Xk = X.copy()
     Zk = X.copy()
@@ -96,8 +96,7 @@ def APGM(prox, X, e_abs=1e-3, e_rel=1e-3, max_iter=1000):
         Zk = Zk + gammak*(Zk_ - Zk)
 
         # test for fixed point convergence
-        e2 = n*p*e_abs**2 + e_rel**2*l2sq(Xk)
-        if l2sq(Xk-Xk_) <= e2:
+        if l2sq(Xk-Xk_) <= e_rel**2*l2sq(Xk):
             Xk = Xk_
             break
 
