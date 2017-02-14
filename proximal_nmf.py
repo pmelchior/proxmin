@@ -41,26 +41,24 @@ def l2sq(x):
 def l2(x):
     return np.sqrt((x**2).sum())
 
-def grad_likelihood_A(A, S, Y, V=None, P=None):
-    if V is None:
+def grad_likelihood_A(A, S, Y, W=None, P=None):
+    if W is None:
         return np.dot(np.dot(A, S) - Y, S.T)
     else:
-        VTV = np.dot(V.T, V)
-        return np.dot(np.dot(A, S) - Y, np.dot(VTV, S.T))
+        return np.dot(W*(np.dot(A, S) - Y), S.T)
 
-def grad_likelihood_S(S, A, Y, V=None, P=None):
-    if V is None:
+def grad_likelihood_S(S, A, Y, W=None, P=None):
+    if W is None:
         return np.dot(A.T, np.dot(A, S) - Y)
     else:
-        VVT = np.dot(V,V.T)
-        return np.dot(A.T, np.dot(VVT, (np.dot(A, S) - Y)))
+        return np.dot(A.T, W*(np.dot(A, S) - Y))
 
 # executes one proximal step of likelihood gradient, folloVed by prox_g
-def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, V=None, P=None):
-    return prox_g(A - step*grad_likelihood_A(A, S, Y, V=V, P=None), l=step)
+def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=None, P=None):
+    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=None), l=step)
 
-def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, V=None, P=None):
-    return prox_g(S - step*grad_likelihood_S(S, A, Y, V=V, P=None), l=step)
+def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=None, P=None):
+    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=None), l=step)
 
 # split X into K components along axis
 # apply prox_list[k] to each component k
@@ -78,7 +76,7 @@ def prox_components(X, step, prox_list=[], axis=0):
 
 # accelerated proximal gradient method
 # Combettes 2009, Algorithm 3.6
-def APGM(prox, X, step, e_rel=1e-3, max_iter=1000):
+def APGM(prox, X, step, e_rel=1e-6, max_iter=1000):
     b,n = X.shape
     Xk = X.copy()
     Zk = X.copy()
@@ -93,7 +91,6 @@ def APGM(prox, X, step, e_rel=1e-3, max_iter=1000):
         if l2sq(Xk - Xk_) <= e_rel**2*l2sq(Xk):
             Xk = Xk_
             break
-
         tk = tk_
         Xk = Xk_
 
@@ -146,28 +143,20 @@ def ADMM(prox_f, step_f, prox_g, step_g, X, max_iter=1000, A=None, e_abs=1e-6, e
     return Xk,Zk,Uk
 
 
-def steps_AS(A,S,V=None):
-    # TODO: optimize the dot products here and in grad_likelihood
-    if V is None:
-        step_A = 1./np.linalg.eigvals(np.dot(S, S.T)).max()
-        step_S = 1./np.linalg.eigvals(np.dot(A.T, A)).max()
-    else:
-        VVT = np.dot(V,V.T)
-        VTV = np.dot(V.T, V)
-        print VVT
-        print VTV
-        step_A = 1./np.linalg.eigvals(np.dot(S, np.dot(VTV, S.T))).max()
-        step_S = 1./np.linalg.eigvals(np.dot(A.T, np.dot(VVT, A))).max()
+def steps_AS(A,S,W=None):
+    step_A = 1./np.linalg.eigvals(np.dot(S, S.T)).max()
+    step_S = 1./np.linalg.eigvals(np.dot(A.T, A)).max()
+    # approximating the effect of weighting by setting step size to worst case
+    if W is not None:
+        W_max = W.max()
+        step_A /= W_max
+        step_S /= W_max
     return step_A, step_S
 
 
 def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
 
-    if W is None:
-        V = None
-    else:
-        V = np.sqrt(W)
-    step_A, step_S = steps_AS(A,S,V=V)
+    step_A, step_S = steps_AS(A, S, W=W)
     print step_A, step_S
 
     from functools import partial
@@ -193,16 +182,16 @@ def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
         }
         prox_Cs = [prox_constraints[c] for c in constraints]
 
-    beta = 0.5
+    beta = 0.9
     for it in range(max_iter):
         print it
         # A: simple gradient method; need to rebind S each time
-        prox_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_g_A, V=V, P=P)
+        prox_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_g_A, W=W, P=P)
         A = APGM(prox_A, A, step_A, max_iter=max_iter)
         print A
 
         # A: either gradient or ADMM, depending on additional constraints
-        prox_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_g_S, V=V, P=P)
+        prox_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_g_S, W=W, P=P)
         if constraints is None:
             S = APGM(prox_S, S, step_S, max_iter=max_iter)
         else:
@@ -211,9 +200,10 @@ def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
             step_S2 = step_S * lCs
             prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=1)
             S = ADMM(prox_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
+        print [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
         # recompute step_sizes
-        step_A, step_S = steps_AS(A,S,V=V)
+        step_A, step_S = steps_AS(A, S, W=W)
         step_A *= beta
         step_S *= beta
 
