@@ -155,6 +155,123 @@ def steps_AS(A,S,W=None):
     return step_A, step_S
 
 
+def getPeakSymmetry(shape, px, py):
+    """Build the operator to symmetrize a the intensities for a single row
+    """
+    center = (np.array(shape)-1)/2.0
+    # If the peak is centered at the middle of the footprint,
+    # make the entire footprint symmetric
+    if px==center[1] and py==center[0]:
+        return np.fliplr(np.eye(shape[0]*shape[1]))
+
+    # Otherwise, find the bounding box that contains the minimum number of pixels needed to symmetrize
+    if py<(shape[0]-1)/2.:
+        ymin = 0
+        ymax = 2*py+1
+    elif py>(shape[0]-1)/2.:
+        ymin = 2*py-shape[0]+1
+        ymax = shape[0]
+    else:
+        ymin = 0
+        ymax = shape[0]
+    if px<(shape[1]-1)/2.:
+        xmin = 0
+        xmax = 2*px+1
+    elif px>(shape[1]-1)/2.:
+        xmin = 2*px-shape[1]+1
+        xmax = shape[1]
+    else:
+        xmin = 0
+        xmax = shape[1]
+
+    fpHeight, fpWidth = shape
+    fpSize = fpWidth*fpHeight
+    tWidth = xmax-xmin
+    tHeight = ymax-ymin
+    extraWidth = fpWidth-tWidth
+    pixels = (tHeight-1)*fpWidth+tWidth
+
+    # This is the block of the matrix that symmetrizes intensities at the peak position
+    subOp = np.eye(pixels, pixels)
+    for i in range(0,tHeight-1):
+        for j in range(extraWidth):
+            idx = (i+1)*tWidth+(i*extraWidth)+j
+            subOp[idx, idx] = 0
+    subOp = np.fliplr(subOp)
+
+    smin = ymin*fpWidth+xmin
+    smax = (ymax-1)*fpWidth+xmax
+    symmetryOp = np.zeros((fpSize, fpSize))
+    symmetryOp[smin:smax,smin:smax] = subOp
+
+    """
+    # Return a sparse matrix, which greatly speeds up the processing
+    return scipy.sparse.coo_matrix(symmetryOp)
+    """
+    return symmetryOp
+
+def getPeakSymmetryOp(shape, px, py):
+    """Operator to calculate the difference from the symmetric intensities
+    """
+    symOp = getPeakSymmetry(shape, px, py)
+    diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
+    return diffOp
+
+ def getRadialMonotonicOp(shape, px, py):
+    """Get a 2D operator to contrain radial monotonicity
+
+    The monotonic operator basically calculates a radial the gradient in from the edges to the peak.
+    Operating the monotonicity operator on a flattened image makes all non-monotonic pixels negative,
+    which can then be projected to the subset gradient=0 using proximal operators.
+
+    The radial monotonic operator is a sparse matrix, where each diagonal element is -1
+    (except the peak position px, py) and each row has one other non-zero element, which is the
+    closest pixel that aligns with a radial line from the pixel to the peak position.
+
+    See DM-9143 for more.
+
+    TODO: Implement this in C++ for speed
+    """
+    height, width = shape
+    center = py*width+px
+    monotonic = -np.eye(width*height, width*height)
+    monotonic[center, center] = 0
+
+    # Set the pixel in line with the radius to 1 for each pixel
+    for h in range(height):
+        for w in range(width):
+            if h==py and w==px:
+                continue
+            dx = px-w
+            dy = py-h
+            pixel = h*width + w
+            if px-w>py-h:
+                if px-w>=h-py:
+                    x = w + 1
+                    y = h + int(np.round(dy/dx))
+                elif px-w<h-py:
+                    x = w - int(np.round(dx/dy))
+                    y = h - 1
+            elif px-w<py-h:
+                if px-w>=h-py:
+                    x = w + int(np.round(dx/dy))
+                    y = h + 1
+                elif px-w<h-py:
+                    x = w - 1
+                    y = h - int(np.round(dy/dx))
+            else:
+                if w<px:
+                    x = w + 1
+                    y = h + 1
+                elif w>px:
+                    x = w - 1
+                    y = h - 1
+            monotonic[pixel, y*width+x] = 1
+    """
+    return scipy.sparse.coo_matrix(monotonic)
+    """
+    return monotonic
+
 def nmf_AS(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
 
     A = A0.copy()
