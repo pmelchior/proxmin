@@ -78,23 +78,23 @@ def prox_components(X, step, prox_list=[], axis=0):
 # Combettes 2009, Algorithm 3.6
 def APGM(prox, X, step, e_rel=1e-6, max_iter=1000):
     b,n = X.shape
-    Xk = X.copy()
-    Zk = X.copy()
-    tk = 1.
+    Z = X.copy()
+    t = 1.
     for it in range(max_iter):
-        Xk_ = prox(Zk, step)
-        tk_ = 0.5*(1 + np.sqrt(4*tk*tk + 1))
-        gammak = 1 + (tk - 1)/tk_
-        Zk = Xk + gammak*(Xk_ - Xk)
+        X_ = prox(Z, step)
+        t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
+        gamma = 1 + (t - 1)/t_
+        Z = X + gamma*(X_ - X)
 
         # test for fixed point convergence
-        if l2sq(Xk - Xk_) <= e_rel**2*l2sq(Xk):
-            Xk = Xk_
+        if l2sq(X - X_) <= e_rel**2*l2sq(X):
+            X[:] = X_[:]
             break
-        tk = tk_
-        Xk = Xk_
 
-    return Xk
+        t = t_
+        X[:] = X_[:]
+
+    return it
 
 # Alternating direction method of multipliers
 # initial: initial guess of solution
@@ -154,8 +154,10 @@ def steps_AS(A,S,W=None):
     return step_A, step_S
 
 
-def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
+def nmf_AS(Y, A_, S_, max_iter=1000, constraints=None, W=None, P=None):
 
+    A = A_.copy()
+    S = S_.copy()
     step_A, step_S = steps_AS(A, S, W=W)
     print step_A, step_S
 
@@ -182,18 +184,18 @@ def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
         }
         prox_Cs = [prox_constraints[c] for c in constraints]
 
-    beta = 0.9
+    beta = 0.5
     for it in range(max_iter):
         print it
         # A: simple gradient method; need to rebind S each time
         prox_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_g_A, W=W, P=P)
-        A = APGM(prox_A, A, step_A, max_iter=max_iter)
+        it_A = APGM(prox_A, A, step_A, max_iter=max_iter)
         print A
 
         # A: either gradient or ADMM, depending on additional constraints
         prox_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_g_S, W=W, P=P)
         if constraints is None:
-            S = APGM(prox_S, S, step_S, max_iter=max_iter)
+            it_S = APGM(prox_S, S, step_S, max_iter=max_iter)
         else:
             # split constraints along each row = component
             # need step sizes for each component
@@ -201,6 +203,9 @@ def nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=None, P=None):
             prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=1)
             S = ADMM(prox_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
         print [(S[i,:] > 0).sum() for i in range(S.shape[0])]
+
+        if it_A == 0 and it_S == 0:
+            break
 
         # recompute step_sizes
         step_A, step_S = steps_AS(A, S, W=W)
