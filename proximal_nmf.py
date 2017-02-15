@@ -155,10 +155,10 @@ def steps_AS(A,S,W=None):
     return step_A, step_S
 
 
-def nmf_AS(Y, A_, S_, max_iter=1000, constraints=None, W=None, P=None):
+def nmf_AS(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
 
-    A = A_.copy()
-    S = S_.copy()
+    A = A0.copy()
+    S = S0.copy()
     step_A, step_S = steps_AS(A, S, W=W)
     K = S.shape[0]
 
@@ -167,12 +167,10 @@ def nmf_AS(Y, A_, S_, max_iter=1000, constraints=None, W=None, P=None):
     # A: ||A_k||_2 = 1 with A_ik >= 0 for all columns k
     prox_g_A = prox_unity1_plus
 
-    # S: L0 sparsity plus linear
-    # TODO: individual sparsity or global?
+    # S: L0 sparsity plus ...
     prox_g_S = prox_hard
-    #prox_g_S = partial(prox_components, prox_list=[prox_hard for k in range(K)], axis=0)
 
-    # additional constraint for each component of S
+    # ... additional constraint for each component of S
     if constraints is not None:
         # ... initialize the constraint matrices ...
         Cs = []
