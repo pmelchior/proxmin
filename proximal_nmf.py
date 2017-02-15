@@ -55,24 +55,25 @@ def grad_likelihood_S(S, A, Y, W=None, P=None):
 
 # executes one proximal step of likelihood gradient, folloVed by prox_g
 def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=None, P=None):
-    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=None), l=step)
+    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=None), step)
 
 def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=None, P=None):
-    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=None), l=step)
+    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=None), step)
 
 # split X into K components along axis
 # apply prox_list[k] to each component k
 # stack results to reconstruct shape of X
 def prox_components(X, step, prox_list=[], axis=0):
-    K = X.shape[axis]
-    assert len(step) == K
-    assert len(prox_list) == K
+    K = len(prox_list)
+
+    if np.isscalar(step):
+        step = [step for k in range(K)]
 
     if axis == 0:
-        PK = [prox_list[i](XK[i], step[i]) for i in range(K)]
+        Pk = [prox_list[k](X[k], step[k]) for k in range(K)]
     if axis == 1:
-        PK = [prox_list[i](XK[:,i], step[i]) for i in range(K)]
-    return np.stack(PK, axis=axis)
+        Pk = [prox_list[k](X[:,k], step[k]) for k in range(K)]
+    return np.stack(Pk, axis=axis)
 
 # accelerated proximal gradient method
 # Combettes 2009, Algorithm 3.6
@@ -114,12 +115,12 @@ def ADMM(prox_f, step_f, prox_g, step_g, X, max_iter=1000, A=None, e_abs=1e-6, e
 
     for it in range(max_iter):
         if A is None:
-            Xk = prox_f(Zk - Uk, step=step_f)
+            Xk = prox_f(Zk - Uk, step_f)
             Ak = Xk
         else:
-            Xk = prox_f(Xk - step_f/step_g*np.dot(A.T, np.dot(A, Xk) - Zk + Uk), step=step_f)
+            Xk = prox_f(Xk - step_f/step_g*np.dot(A.T, np.dot(A, Xk) - Zk + Uk), step_f)
             Ak = np.dot(A, Xk)
-        Zk_ = prox_g(Ak + Uk, l=step_g)
+        Zk_ = prox_g(Ak + Uk, step_g)
         # this uses relaxation parameter of 1
         Uk = Uk + Ak - Zk_
 
@@ -159,7 +160,7 @@ def nmf_AS(Y, A_, S_, max_iter=1000, constraints=None, W=None, P=None):
     A = A_.copy()
     S = S_.copy()
     step_A, step_S = steps_AS(A, S, W=W)
-    print step_A, step_S
+    K = S.shape[0]
 
     from functools import partial
     # define proximal operators:
@@ -169,6 +170,7 @@ def nmf_AS(Y, A_, S_, max_iter=1000, constraints=None, W=None, P=None):
     # S: L0 sparsity plus linear
     # TODO: individual sparsity or global?
     prox_g_S = prox_hard
+    #prox_g_S = partial(prox_components, prox_list=[prox_hard for k in range(K)], axis=0)
 
     # additional constraint for each component of S
     if constraints is not None:
@@ -186,11 +188,9 @@ def nmf_AS(Y, A_, S_, max_iter=1000, constraints=None, W=None, P=None):
 
     beta = 0.5
     for it in range(max_iter):
-        print it
         # A: simple gradient method; need to rebind S each time
         prox_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_g_A, W=W, P=P)
         it_A = APGM(prox_A, A, step_A, max_iter=max_iter)
-        print A
 
         # A: either gradient or ADMM, depending on additional constraints
         prox_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_g_S, W=W, P=P)
@@ -200,17 +200,18 @@ def nmf_AS(Y, A_, S_, max_iter=1000, constraints=None, W=None, P=None):
             # split constraints along each row = component
             # need step sizes for each component
             step_S2 = step_S * lCs
-            prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=1)
+            prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=0)
             S = ADMM(prox_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
-        print [(S[i,:] > 0).sum() for i in range(S.shape[0])]
+
+        print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
         if it_A == 0 and it_S == 0:
             break
 
         # recompute step_sizes
         step_A, step_S = steps_AS(A, S, W=W)
-        step_A *= beta
-        step_S *= beta
+        step_A *= beta**it
+        step_S *= beta**it
 
     return A,S
 
