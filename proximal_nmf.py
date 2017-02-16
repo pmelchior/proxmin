@@ -28,12 +28,12 @@ def prox_soft_plus(X, l):
     return prox_plus(np.abs(X) - l)
 
 # projection onto sum=1 along each axis
-def prox_unity1(X, l=None, axis=0):
+def prox_unity(X, l=None, axis=0):
     return X / np.sum(X, axis=axis, keepdims=True)
 
 # same but with projection onto non-negative
-def prox_unity1_plus(X, l=None, axis=0):
-    return prox_unity1(prox_plus(X), axis=axis)
+def prox_unity_plus(X, l=None, axis=0):
+    return prox_unity(prox_plus(X), axis=axis)
 
 def l2sq(x):
     return (x**2).sum()
@@ -217,7 +217,7 @@ def getPeakSymmetryOp(shape, px, py):
     diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
     return diffOp
 
- def getRadialMonotonicOp(shape, px, py):
+def getRadialMonotonicOp(shape, px, py):
     """Get a 2D operator to contrain radial monotonicity
 
     The monotonic operator basically calculates a radial the gradient in from the edges to the peak.
@@ -272,7 +272,7 @@ def getPeakSymmetryOp(shape, px, py):
     """
     return monotonic
 
-def nmf_AS(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
+def nmf(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
 
     A = A0.copy()
     S = S0.copy()
@@ -282,7 +282,7 @@ def nmf_AS(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
     from functools import partial
     # define proximal operators:
     # A: ||A_k||_2 = 1 with A_ik >= 0 for all columns k
-    prox_g_A = prox_unity1_plus
+    prox_g_A = prox_unity_plus
 
     # S: L0 sparsity plus ...
     prox_g_S = prox_hard
@@ -324,22 +324,66 @@ def nmf_AS(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
             break
 
         # recompute step_sizes
+        # TODO: 1) devise optimal schedule, 2) decouple step from proximal lambda
         step_A, step_S = steps_AS(A, S, W=W)
         step_A *= beta**it
         step_S *= beta**it
 
     return A,S
 
-def init_A(B, K):
-    return np.zeros((B,K))
+def init_A(B, K, peaks=None, I=None):
+    # init A from SED of the peak pixels
+    if peaks is None:
+        A = np.random.rand(B,K)
+    else:
+        assert I is not None
+        assert len(peaks) == K
+        A = np.empty((B,K))
+        for k in range(K):
+            px,py = peaks[k]
+            A[:,k] = I[:,py,px]
+    A = prox_unity_plus(A)
+    return A
 
-def init_S(N, K):
-    return np.zeros((N,K))
+def init_S(N, M, K, peaks=None, I=None):
+    # init S with intensity of peak pixels
+    if peaks is None:
+        S = np.random.rand(K,N*M)
+    else:
+        assert I is not None
+        assert len(peaks) == K
+        S = np.zeros((K,N*M))
+        tiny = 1e-10
+        for k in range(K):
+            px,py = peaks[k]
+            S[k,py*M+px] = np.abs(I[:,py,px].sum()) + tiny
+    return S
 
-def nmf(Y, K=1, max_iter=1000, constraints=None, W=None, P=None):
+def nmf2D(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None):
     if P is not None:
         raise NotImplementedError("PSF convolution not implemented!")
-    B,N = Y.shape
-    A = init_A(B,K)
-    S = init_S(N,K)
-    nmf_AS(Y, A, S, max_iter=1000, constraints=None, W=W, P=P)
+
+    # vectorize image cubes
+    B,N,M = I.shape
+    if sky is None:
+        Y = I.reshape(B,N*M)
+    else:
+        Y = (I-sky).reshape(B,N*M)
+    if W is None:
+        W_ = W
+    else:
+        W_ = W.reshape(B,N*M)
+    if P is None:
+        P_ = P
+    else:
+        P_ = P.reshape(B,N*M)
+
+    # init matrices
+    A0 = init_A(B, K, I=I, peaks=peaks)
+    S0 = init_S(N, M, K, I=I, peaks=peaks)
+
+    A,S = nmf(Y, A0, S0, max_iter=max_iter, constraints=constraints, W=W_, P=P_)
+
+    # reshape S to have shape B,N,M
+    S = S.reshape(K,N,M)
+    return A,S
