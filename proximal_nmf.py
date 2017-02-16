@@ -1,4 +1,5 @@
 import numpy as np
+from functools import partial
 
 # identity
 def prox_id(X, l=None):
@@ -272,51 +273,31 @@ def getRadialMonotonicOp(shape, px, py):
     """
     return monotonic
 
-def nmf(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
+def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, lC2=None, max_iter=1000, W=None, P=None):
+
+    if prox_S2 is not None:
+        assert lC2 is not None
 
     A = A0.copy()
     S = S0.copy()
     step_A, step_S = steps_AS(A, S, W=W)
     K = S.shape[0]
 
-    from functools import partial
-    # define proximal operators:
-    # A: ||A_k||_2 = 1 with A_ik >= 0 for all columns k
-    prox_g_A = prox_unity_plus
-
-    # S: L0 sparsity plus ...
-    prox_g_S = prox_hard
-
-    # ... additional constraint for each component of S
-    if constraints is not None:
-        # ... initialize the constraint matrices ...
-        Cs = []
-
-        # calculate step sizes for each constraint matrix
-        lCs = np.array([np.linalg.eigvals(np.dot(C.T, C)).max() for C in Cs])
-
-        prox_constraints = {
-            "M": prox_plus,  # positive gradients
-            "S": prox_zero   # zero deviation of mirrored pixels
-        }
-        prox_Cs = [prox_constraints[c] for c in constraints]
-
     beta = 0.5
     for it in range(max_iter):
         # A: simple gradient method; need to rebind S each time
-        prox_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_g_A, W=W, P=P)
-        it_A = APGM(prox_A, A, step_A, max_iter=max_iter)
+        prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
+        it_A = APGM(prox_like_A, A, step_A, max_iter=max_iter)
 
         # A: either gradient or ADMM, depending on additional constraints
-        prox_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_g_S, W=W, P=P)
-        if constraints is None:
-            it_S = APGM(prox_S, S, step_S, max_iter=max_iter)
+        prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
+        if prox_S2 is None:
+            it_S = APGM(prox_like_S, S, step_S, max_iter=max_iter)
         else:
             # split constraints along each row = component
             # need step sizes for each component
-            step_S2 = step_S * lCs
-            prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=0)
-            S = ADMM(prox_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
+            step_S2 = step_S * lC2
+            S = ADMM(prox_like_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
 
         print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
@@ -324,7 +305,7 @@ def nmf(Y, A0, S0, max_iter=1000, constraints=None, W=None, P=None):
             break
 
         # recompute step_sizes
-        # TODO: 1) devise optimal schedule, 2) decouple step from proximal lambda
+        # TODO: devise optimal schedule
         step_A, step_S = steps_AS(A, S, W=W)
         step_A *= beta**it
         step_S *= beta**it
@@ -359,7 +340,7 @@ def init_S(N, M, K, peaks=None, I=None):
             S[k,py*M+px] = np.abs(I[:,py,px].sum()) + tiny
     return S
 
-def nmf2D(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None):
+def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None):
     if P is not None:
         raise NotImplementedError("PSF convolution not implemented!")
 
@@ -379,10 +360,37 @@ def nmf2D(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, s
         P_ = P.reshape(B,N*M)
 
     # init matrices
-    A0 = init_A(B, K, I=I, peaks=peaks)
-    S0 = init_S(N, M, K, I=I, peaks=peaks)
+    A = init_A(B, K, I=I, peaks=peaks)
+    S = init_S(N, M, K, I=I, peaks=peaks)
 
-    A,S = nmf(Y, A0, S0, max_iter=max_iter, constraints=constraints, W=W_, P=P_)
+    # define constraints for A and S via proximal operators
+    # A: ||A_k||_2 = 1 with A_ik >= 0 for all columns k
+    prox_A = prox_unity_plus
+
+    # S: non-negativity or L0/L1 sparsity plus ...
+    # TODO: 2) decouple step from proximal lambda when using prox_hard or prox_soft
+    prox_S = prox_plus # prox_hard
+
+    # ... additional constraint for each component of S
+    if constraints is not None:
+        # ... initialize the constraint matrices ...
+        Cs = [np.eye(N*M) for c in constraints]
+
+        # calculate step sizes for each constraint matrix
+        lC2 = np.array([np.linalg.eigvals(np.dot(C.T, C)).max() for C in Cs])
+
+        prox_constraints = {
+            " ": prox_id,    # do nothing
+            "M": prox_plus,  # positive gradients
+            "S": prox_zero   # zero deviation of mirrored pixels
+        }
+        prox_Cs = [prox_constraints[c] for c in constraints]
+        prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=0)
+    else:
+        prox_S2 = lC2 = None
+
+    # run the NMF with those constraints
+    A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, lC2=lC2, max_iter=max_iter, W=W_, P=P_)
 
     # reshape S to have shape B,N,M
     S = S.reshape(K,N,M)
