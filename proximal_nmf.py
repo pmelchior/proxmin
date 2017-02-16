@@ -101,48 +101,48 @@ def APGM(prox, X, step, e_rel=1e-6, max_iter=1000):
 # Alternating direction method of multipliers
 # initial: initial guess of solution
 # K: number of iterations
-# A: minimizes f(x) + g(Ax)
-# See Boyd+2011, Section 3, with arbitrary A, B=-Id, c=0
-def ADMM(prox_f, step_f, prox_g, step_g, X, max_iter=1000, A=None, e_abs=1e-6, e_rel=1e-3):
-    if A is None:
-        Uk = np.zeros_like(X)
-        Zk = initial.copy()
-        p,n = initial.size, initial.size
+# A: minimizes f(x) + g(Cx)
+# See Boyd+2011, Section 3, with arbitrary C, B=-Id, c=0
+def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, C=None, e_abs=1e-6, e_rel=1e-3):
+    if C is None:
+        U = np.zeros_like(X0)
+        Z = initial.copy()
+        p,n = X.shape
     else:
-        Xk = X.copy()
-        Zk = np.dot(A, Xk)
-        Uk = np.zeros_like(Zk)
-        p,n = A.shape
+        X = X0.copy()
+        Z = np.dot(C, X) # FIXME:Not a dot product!
+        U = np.zeros_like(Z)
+        p,n = C[0].shape
 
     for it in range(max_iter):
-        if A is None:
-            Xk = prox_f(Zk - Uk, step_f)
-            Ak = Xk
+        if C is None:
+            X = prox_f(Z - U, step_f)
+            A = X
         else:
-            Xk = prox_f(Xk - step_f/step_g*np.dot(A.T, np.dot(A, Xk) - Zk + Uk), step_f)
-            Ak = np.dot(A, Xk)
-        Zk_ = prox_g(Ak + Uk, step_g)
+            X = prox_f(X - step_f/step_g*np.dot(C.T, np.dot(C, X) - Z + U), step_f)
+            A = np.dot(C, X)
+        Z_ = prox_g(A + U, step_g)
         # this uses relaxation parameter of 1
-        Uk = Uk + Ak - Zk_
+        U = U + A - Z_
 
         # compute prime residual rk and dual residual sk
-        Rk = Ak - Zk_
-        if A is None:
-            Sk = -(Zk_ - Zk)
+        R = A - Z_
+        if C is None:
+            S = -(Z_ - Z)
         else:
-            Sk = -np.dot(A.T, Zk_ - Zk)
-        Zk = Zk_
+            S = -np.dot(C.T, Z_ - Z)
+        Z = Z_
 
         # stopping criteria from Boyd+2011, sect. 3.3.1
-        e_pri2 = p*e_abs**2 + e_rel**2*max(l2sq(Ak), l2sq(Zk))
-        if A is None:
-            e_dual2 = n*e_abs**2 + e_rel**2*l2sq(Uk)
+        e_pri2 = p*e_abs**2 + e_rel**2*max(l2sq(A), l2sq(Z))
+        if C is None:
+            e_dual2 = n*e_abs**2 + e_rel**2*l2sq(U)
         else:
-            e_dual2 = n*e_abs**2 + e_rel**2*l2sq(np.dot(A.T, Uk))
-        if l2sq(Rk) <= e_pri2 and l2sq(Sk) <= e_dual2:
+            e_dual2 = n*e_abs**2 + e_rel**2*l2sq(np.dot(C.T, U))
+        if l2sq(R) <= e_pri2 and l2sq(S) <= e_dual2:
             break
 
-    return Xk,Zk,Uk
+    return X,Z,U
 
 
 def steps_AS(A,S,W=None):
@@ -154,7 +154,6 @@ def steps_AS(A,S,W=None):
         step_A /= W_max
         step_S /= W_max
     return step_A, step_S
-
 
 def getPeakSymmetry(shape, px, py):
     """Build the operator to symmetrize a the intensities for a single row
