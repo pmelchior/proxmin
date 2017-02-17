@@ -65,7 +65,8 @@ def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=None, P=None):
 # apply prox_list[k] to each component k
 # stack results to reconstruct shape of X
 def prox_components(X, step, prox_list=[], axis=0):
-    K = len(prox_list)
+    assert X.shape[axis] == len(prox_list)
+    K = X.shape[axis]
 
     if np.isscalar(step):
         step = [step for k in range(K)]
@@ -75,6 +76,24 @@ def prox_components(X, step, prox_list=[], axis=0):
     if axis == 1:
         Pk = [prox_list[k](X[:,k], step[k]) for k in range(K)]
     return np.stack(Pk, axis=axis)
+
+def dot_components(C, X, axis=0, transpose_C=False):
+    assert X.shape[axis] == len(C)
+    K = X.shape[axis]
+
+    if axis == 0:
+        if not transpose_C:
+            CX = [np.dot(C[k], X[k]) for k in range(K)]
+        else:
+            CX = [np.dot(C[k].T, X[k]) for k in range(K)]
+    if axis == 1:
+        if not transpose_C:
+            CX = [np.dot(C[k], X[:,k]) for k in range(K)]
+        else:
+            CX = [np.dot(C[k].T, X[:,k]) for k in range(K)]
+    return np.stack(CX, axis=axis)
+
+
 
 # accelerated proximal gradient method
 # Combettes 2009, Algorithm 3.6
@@ -103,24 +122,22 @@ def APGM(prox, X, step, e_rel=1e-6, max_iter=1000):
 # K: number of iterations
 # A: minimizes f(x) + g(Cx)
 # See Boyd+2011, Section 3, with arbitrary C, B=-Id, c=0
-def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, C=None, e_abs=1e-6, e_rel=1e-3):
+def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, C=None, e_rel=1e-3):
     if C is None:
         U = np.zeros_like(X0)
-        Z = initial.copy()
-        p,n = X.shape
+        Z = X0.copy()
     else:
         X = X0.copy()
-        Z = np.dot(C, X) # FIXME:Not a dot product!
+        Z = dot_components(C, X)
         U = np.zeros_like(Z)
-        p,n = C[0].shape
 
     for it in range(max_iter):
         if C is None:
             X = prox_f(Z - U, step_f)
             A = X
         else:
-            X = prox_f(X - step_f/step_g*np.dot(C.T, np.dot(C, X) - Z + U), step_f)
-            A = np.dot(C, X)
+            X = prox_f(X - step_f/step_g * dot_components(C, dot_components(C, X) - Z + U, transpose_C=True), step_f)
+            A = dot_components(C, X)
         Z_ = prox_g(A + U, step_g)
         # this uses relaxation parameter of 1
         U = U + A - Z_
@@ -130,19 +147,20 @@ def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, C=None, e_abs=1e-6, 
         if C is None:
             S = -(Z_ - Z)
         else:
-            S = -np.dot(C.T, Z_ - Z)
+            S = -dot_components(C, Z_ - Z, transpose_C=True)
         Z = Z_
 
         # stopping criteria from Boyd+2011, sect. 3.3.1
-        e_pri2 = p*e_abs**2 + e_rel**2*max(l2sq(A), l2sq(Z))
+        # only relative errors
+        e_pri2 = e_rel**2*max(l2sq(A), l2sq(Z))
         if C is None:
-            e_dual2 = n*e_abs**2 + e_rel**2*l2sq(U)
+            e_dual2 = e_rel**2*l2sq(U)
         else:
-            e_dual2 = n*e_abs**2 + e_rel**2*l2sq(np.dot(C.T, U))
+            e_dual2 = e_rel**2*l2sq(dot_components(C, U, transpose_C=True))
         if l2sq(R) <= e_pri2 and l2sq(S) <= e_dual2:
             break
 
-    return X,Z,U
+    return it, X, Z, U
 
 
 def steps_AS(A,S,W=None):
@@ -296,7 +314,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, lC2=None, max_iter=1000, W=None
             # split constraints along each row = component
             # need step sizes for each component
             step_S2 = step_S * lC2
-            S = ADMM(prox_like_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
+            it_S, S, _, _ = ADMM(prox_like_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
 
         print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
