@@ -232,7 +232,8 @@ def getPeakSymmetryOp(shape, px, py):
     """Operator to calculate the difference from the symmetric intensities
     """
     symOp = getPeakSymmetry(shape, px, py)
-    diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
+    # diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
+    diffOp = np.eye(shape[0]*shape[1])-symOp
     return diffOp
 
 def getRadialMonotonicOp(shape, px, py):
@@ -391,7 +392,18 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     # ... additional constraint for each component of S
     if constraints is not None:
         # ... initialize the constraint matrices ...
-        Cs = [np.eye(N*M) for c in constraints]
+        Cs = []
+        for k in range(K):
+            c = constraints[k]
+            if c == " ":
+                C = np.eye(N*M)
+            if c == "M":
+                px, py = peaks[k]
+                C = getRadialMonotonicOp((N,M), px, py)
+            if c == "S":
+                px, py = peaks[k]
+                C = getPeakSymmetryOp((N,M), px, py)
+            Cs.append(C)
 
         # calculate step sizes for each constraint matrix
         lC2 = np.array([np.linalg.eigvals(np.dot(C.T, C)).max() for C in Cs])
