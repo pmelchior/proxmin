@@ -77,17 +77,17 @@ def prox_components(X, step, prox_list=[], axis=0):
         Pk = [prox_list[k](X[:,k], step[k]) for k in range(K)]
     return np.stack(Pk, axis=axis)
 
-def dot_components(C, X, axis=0, transpose_C=False):
+def dot_components(C, X, axis=0, transpose=False):
     assert X.shape[axis] == len(C)
     K = X.shape[axis]
 
     if axis == 0:
-        if not transpose_C:
+        if not transpose:
             CX = [np.dot(C[k], X[k]) for k in range(K)]
         else:
             CX = [np.dot(C[k].T, X[k]) for k in range(K)]
     if axis == 1:
-        if not transpose_C:
+        if not transpose:
             CX = [np.dot(C[k], X[:,k]) for k in range(K)]
         else:
             CX = [np.dot(C[k].T, X[:,k]) for k in range(K)]
@@ -120,43 +120,44 @@ def APGM(prox, X, step, e_rel=1e-6, max_iter=1000):
 # Alternating direction method of multipliers
 # initial: initial guess of solution
 # K: number of iterations
-# A: minimizes f(x) + g(Cx)
-# See Boyd+2011, Section 3, with arbitrary C, B=-Id, c=0
-def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, C=None, e_rel=1e-3):
-    if C is None:
+# A: KxN*M: minimizes f(X) + g(AX) for each component k (i.e. rows of X)
+# See Boyd+2011, Section 3, with arbitrary A, B=-Id, c=0
+def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, A=None, e_rel=1e-3):
+
+    if A is None:
         U = np.zeros_like(X0)
         Z = X0.copy()
     else:
         X = X0.copy()
-        Z = dot_components(C, X)
+        Z = dot_components(A, X)
         U = np.zeros_like(Z)
 
     for it in range(max_iter):
-        if C is None:
+        if A is None:
             X = prox_f(Z - U, step_f)
-            A = X
+            AX = X
         else:
-            X = prox_f(X - step_f/step_g * dot_components(C.T, dot_components(C, X) - Z + U, transpose_C=True), step_f)
-            A = dot_components(C, X)
-        Z_ = prox_g(A + U, step_g)
+            X = prox_f(X - (step_f/step_g)[:,None] * dot_components(A, dot_components(A, X) - Z + U, transpose=True), step_f)
+            AX = dot_components(A, X)
+        Z_ = prox_g(AX + U, step_g)
         # this uses relaxation parameter of 1
-        U = U + A - Z_
+        U = U + AX - Z_
 
         # compute prime residual rk and dual residual sk
-        R = A - Z_
-        if C is None:
+        R = AX - Z_
+        if A is None:
             S = -(Z_ - Z)
         else:
-            S = -dot_components(C, Z_ - Z, transpose_C=True)
+            S = -dot_components(A, Z_ - Z, transpose=True)
         Z = Z_
 
         # stopping criteria from Boyd+2011, sect. 3.3.1
         # only relative errors
-        e_pri2 = e_rel**2*max(l2sq(A), l2sq(Z))
-        if C is None:
+        e_pri2 = e_rel**2*max(l2sq(AX), l2sq(Z))
+        if A is None:
             e_dual2 = e_rel**2*l2sq(U)
         else:
-            e_dual2 = e_rel**2*l2sq(dot_components(C, U, transpose_C=True))
+            e_dual2 = e_rel**2*l2sq(dot_components(A, U, transpose=True))
         if l2sq(R) <= e_pri2 and l2sq(S) <= e_dual2:
             break
 
@@ -291,10 +292,7 @@ def getRadialMonotonicOp(shape, px, py):
     """
     return monotonic
 
-def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, lC2=None, max_iter=1000, W=None, P=None):
-
-    if prox_S2 is not None:
-        assert lC2 is not None
+def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None):
 
     A = A0.copy()
     S = S0.copy()
@@ -307,15 +305,14 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, lC2=None, max_iter=1000, W=None
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
         it_A = APGM(prox_like_A, A, step_A, max_iter=max_iter)
 
-        # A: either gradient or ADMM, depending on additional constraints
+        # S: either gradient or ADMM, depending on additional constraints
         prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
         if prox_S2 is None:
             it_S = APGM(prox_like_S, S, step_S, max_iter=max_iter)
         else:
-            # split constraints along each row = component
-            # need step sizes for each component
-            step_S2 = step_S * lC2
-            it_S, S, _, _ = ADMM(prox_like_S, step_S, prox_S2, step_S2, S, max_iter=max_iter)
+            # steps set to upper limit per component
+            step_S2 = step_S * lM2
+            it_S, S, _, _ = ADMM(prox_like_S, step_S, prox_S2, step_S2, S, A=M2, max_iter=max_iter)
 
         print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
@@ -387,12 +384,12 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # S: non-negativity or L0/L1 sparsity plus ...
     # TODO: 2) decouple step from proximal lambda when using prox_hard or prox_soft
-    prox_S = prox_plus # prox_hard
+    prox_S = prox_id#plus # prox_hard
 
     # ... additional constraint for each component of S
     if constraints is not None:
         # ... initialize the constraint matrices ...
-        Cs = []
+        M2 = []
         for k in range(K):
             c = constraints[k]
             if c == " ":
@@ -403,23 +400,23 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
             if c == "S":
                 px, py = peaks[k]
                 C = getPeakSymmetryOp((N,M), px, py)
-            Cs.append(C)
+            M2.append(C)
 
         # calculate step sizes for each constraint matrix
-        lC2 = np.array([np.real(np.linalg.eigvals(np.dot(C.T, C))).max() for C in Cs])
+        lM2 = np.array([np.real(np.linalg.eigvals(np.dot(C.T, C))).max() for C in M2])
 
         prox_constraints = {
-            " ": prox_id,    # do nothing
+            " ": prox_plus,    # do nothing
             "M": prox_plus,  # positive gradients
             "S": prox_zero   # zero deviation of mirrored pixels
         }
         prox_Cs = [prox_constraints[c] for c in constraints]
         prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=0)
     else:
-        prox_S2 = lC2 = None
+        prox_S2 = lM2 = None
 
     # run the NMF with those constraints
-    A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, lC2=lC2, max_iter=max_iter, W=W_, P=P_)
+    A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_)
     model = np.dot(A,S).reshape(B,N,M)
     # reshape S to have shape B,N,M
     S = S.reshape(K,N,M)
