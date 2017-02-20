@@ -136,7 +136,7 @@ def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, C=None, e_rel=1e-3):
             X = prox_f(Z - U, step_f)
             A = X
         else:
-            X = prox_f(X - step_f/step_g * dot_components(C, dot_components(C, X) - Z + U, transpose_C=True), step_f)
+            X = prox_f(X - step_f/step_g * dot_components(C.T, dot_components(C, X) - Z + U, transpose_C=True), step_f)
             A = dot_components(C, X)
         Z_ = prox_g(A + U, step_g)
         # this uses relaxation parameter of 1
@@ -406,7 +406,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
             Cs.append(C)
 
         # calculate step sizes for each constraint matrix
-        lC2 = np.array([np.linalg.eigvals(np.dot(C.T, C)).max() for C in Cs])
+        lC2 = np.array([np.real(np.linalg.eigvals(np.dot(C.T, C))).max() for C in Cs])
 
         prox_constraints = {
             " ": prox_id,    # do nothing
@@ -420,7 +420,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # run the NMF with those constraints
     A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, lC2=lC2, max_iter=max_iter, W=W_, P=P_)
-
+    model = np.dot(A,S).reshape(B,N,M)
     # reshape S to have shape B,N,M
     S = S.reshape(K,N,M)
-    return A,S
+    return A,S,model
