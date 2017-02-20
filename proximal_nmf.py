@@ -97,8 +97,7 @@ def dot_components(C, X, axis=0, transpose=False):
 
 # accelerated proximal gradient method
 # Combettes 2009, Algorithm 3.6
-def APGM(prox, X, step, e_rel=1e-6, max_iter=1000):
-    b,n = X.shape
+def APGM(X, prox, step, e_rel=1e-6, max_iter=1000):
     Z = X.copy()
     t = 1.
     for it in range(max_iter):
@@ -122,7 +121,7 @@ def APGM(prox, X, step, e_rel=1e-6, max_iter=1000):
 # K: number of iterations
 # A: KxN*M: minimizes f(X) + g(AX) for each component k (i.e. rows of X)
 # See Boyd+2011, Section 3, with arbitrary A, B=-Id, c=0
-def ADMM(prox_f, step_f, prox_g, step_g, X0, max_iter=1000, A=None, e_rel=1e-3):
+def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
 
     if A is None:
         U = np.zeros_like(X0)
@@ -303,16 +302,16 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
     for it in range(max_iter):
         # A: simple gradient method; need to rebind S each time
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
-        it_A = APGM(prox_like_A, A, step_A, max_iter=max_iter)
+        it_A = APGM(A, prox_like_A, step_A, max_iter=max_iter)
 
         # S: either gradient or ADMM, depending on additional constraints
         prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
         if prox_S2 is None:
-            it_S = APGM(prox_like_S, S, step_S, max_iter=max_iter)
+            it_S = APGM(S, prox_like_S, step_S, max_iter=max_iter)
         else:
             # steps set to upper limit per component
             step_S2 = step_S * lM2
-            it_S, S, _, _ = ADMM(prox_like_S, step_S, prox_S2, step_S2, S, A=M2, max_iter=max_iter)
+            it_S, S, _, _ = ADMM(S, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter)
 
         print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
