@@ -158,21 +158,14 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
         else:
             e_dual2 = e_rel**2*l2sq(dot_components(A, U, transpose=True))
         if l2sq(R) <= e_pri2 and l2sq(S) <= e_dual2:
-            # print l2sq(R),e_pri2,l2sq(S),e_dual2
+            #print l2sq(R),e_pri2,l2sq(S),e_dual2
             break
 
     return it, X, Z, U
 
 
-def steps_AS(A,S,W=None):
-    step_A = 1./np.linalg.eigvals(np.dot(S, S.T)).max()
-    step_S = 1./np.linalg.eigvals(np.dot(A.T, A)).max()
-    # approximating the effect of weighting by setting step size to worst case
-    if W is not None:
-        W_max = W.max()
-        step_A /= W_max
-        step_S /= W_max
-    return step_A, step_S
+def lipschitz_const(M):
+    return np.real(np.linalg.eigvals(np.dot(M, M.T)).max())
 
 def getPeakSymmetry(shape, px, py):
     """Build the operator to symmetrize a the intensities for a single row
@@ -291,17 +284,23 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
 
     A = A0.copy()
     S = S0.copy()
-    step_A, step_S = steps_AS(A, S, W=W)
     K = S.shape[0]
-
     beta = 0.5
+
+    if W is not None:
+        W_max = W.max()
+    else:
+        W_max = 1
+
     for it in range(max_iter):
         # A: simple gradient method; need to rebind S each time
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
+        step_A = 1./ lipschitz_const(S) / W_max
         it_A = APGM(A, prox_like_A, step_A, max_iter=max_iter)
 
         # S: either gradient or ADMM, depending on additional constraints
         prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
+        step_S = 1./ lipschitz_const(A) / W_max
         if prox_S2 is None:
             it_S = APGM(S, prox_like_S, step_S, max_iter=max_iter)
         else:
@@ -316,9 +315,8 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
 
         # recompute step_sizes
         # TODO: devise optimal schedule
-        step_A, step_S = steps_AS(A, S, W=W)
-        step_A *= beta**it
-        step_S *= beta**it
+        #step_A *= beta**it
+        #step_S *= beta**it
 
     return A,S
 
@@ -347,7 +345,7 @@ def init_S(N, M, K, peaks=None, I=None):
         tiny = 1e-10
         for k in range(K):
             px,py = peaks[k]
-            S[k,py*M+px] = np.abs(I[:,py,px].sum()) + tiny
+            S[k,py*M+px] = np.abs(I[:,py,px].mean()) + tiny
     return S
 
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None):
