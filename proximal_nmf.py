@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np, scipy.sparse, scipy.sparse.linalg
 from functools import partial
 
 # identity
@@ -83,14 +83,14 @@ def dot_components(C, X, axis=0, transpose=False):
 
     if axis == 0:
         if not transpose:
-            CX = [np.dot(C[k], X[k]) for k in range(K)]
+            CX = [C[k].dot(X[k]) for k in range(K)]
         else:
-            CX = [np.dot(C[k].T, X[k]) for k in range(K)]
+            CX = [C[k].T.dot(X[k]) for k in range(K)]
     if axis == 1:
         if not transpose:
-            CX = [np.dot(C[k], X[:,k]) for k in range(K)]
+            CX = [C[k].dot(X[:,k]) for k in range(K)]
         else:
-            CX = [np.dot(C[k].T, X[:,k]) for k in range(K)]
+            CX = [C[k].T.dot(X[:,k]) for k in range(K)]
     return np.stack(CX, axis=axis)
 
 
@@ -147,7 +147,7 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
         if A is None:
             S = -(Z_ - Z)
         else:
-            S = -dot_components(A, Z_ - Z, transpose=True)
+            S = -(step_f/step_g)[:,None] * dot_components(A, Z_ - Z, transpose=True)
         Z = Z_
 
         # stopping criteria from Boyd+2011, sect. 3.3.1
@@ -158,6 +158,7 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
         else:
             e_dual2 = e_rel**2*l2sq(dot_components(A, U, transpose=True))
         if l2sq(R) <= e_pri2 and l2sq(S) <= e_dual2:
+            # print l2sq(R),e_pri2,l2sq(S),e_dual2
             break
 
     return it, X, Z, U
@@ -222,18 +223,14 @@ def getPeakSymmetry(shape, px, py):
     symmetryOp = np.zeros((fpSize, fpSize))
     symmetryOp[smin:smax,smin:smax] = subOp
 
-    """
     # Return a sparse matrix, which greatly speeds up the processing
     return scipy.sparse.coo_matrix(symmetryOp)
-    """
-    return symmetryOp
 
 def getPeakSymmetryOp(shape, px, py):
     """Operator to calculate the difference from the symmetric intensities
     """
     symOp = getPeakSymmetry(shape, px, py)
-    # diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
-    diffOp = np.eye(shape[0]*shape[1])-symOp
+    diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
     return diffOp
 
 def getRadialMonotonicOp(shape, px, py):
@@ -286,10 +283,9 @@ def getRadialMonotonicOp(shape, px, py):
                     x = w - 1
                     y = h - 1
             monotonic[pixel, y*width+x] = 1
-    """
+
     return scipy.sparse.coo_matrix(monotonic)
-    """
-    return monotonic
+
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None):
 
@@ -383,7 +379,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # S: non-negativity or L0/L1 sparsity plus ...
     # TODO: 2) decouple step from proximal lambda when using prox_hard or prox_soft
-    prox_S = prox_id#plus # prox_hard
+    prox_S = prox_plus # prox_hard
 
     # ... additional constraint for each component of S
     if constraints is not None:
@@ -392,7 +388,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         for k in range(K):
             c = constraints[k]
             if c == " ":
-                C = np.eye(N*M)
+                C = scipy.sparse.identity(N*M)
             if c == "M":
                 px, py = peaks[k]
                 C = getRadialMonotonicOp((N,M), px, py)
@@ -402,17 +398,18 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
             M2.append(C)
 
         # calculate step sizes for each constraint matrix
-        lM2 = np.array([np.real(np.linalg.eigvals(np.dot(C.T, C))).max() for C in M2])
+        # TODO: some of those are trivial to compute...
+        lM2 = np.array([np.real(scipy.sparse.linalg.eigs(np.dot(C.T,C), k=1, return_eigenvectors=False)[0]) for C in M2])
 
         prox_constraints = {
-            " ": prox_plus,    # do nothing
+            " ": prox_id,    # do nothing
             "M": prox_plus,  # positive gradients
             "S": prox_zero   # zero deviation of mirrored pixels
         }
         prox_Cs = [prox_constraints[c] for c in constraints]
         prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=0)
     else:
-        prox_S2 = lM2 = None
+        prox_S2 = M2 = lM2 = None
 
     # run the NMF with those constraints
     A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_)
