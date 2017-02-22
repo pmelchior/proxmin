@@ -61,10 +61,10 @@ def grad_likelihood_S(S, A, Y, W=1, P=None):
 
 # executes one proximal step of likelihood gradient, folloVed by prox_g
 def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1, P=None):
-    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=None), step)
+    return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=P), step)
 
 def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=1, P=None):
-    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=None), step)
+    return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=P), step)
 
 # split X into K components along axis
 # apply prox_list[k] to each component k
@@ -358,11 +358,12 @@ def init_S(N, M, K, peaks=None, I=None):
 def adapt_PSF(P, shape):
     B = P.shape[0]
     # PSF shape can be different from image shape
-    P_ = np.zeros(B, shape[0], shape[0])
+    P_ = np.zeros((B, shape[0], shape[0]))
     for b in range(B):
         peak_idx = np.argmax(P[b])
         px, py = np.unravel_index(peak_idx, P[b].shape)
         # ... fill elements of P[b] in P_[b,:] so that np.dot(P_, X) acts like a convolution
+    return P
 
 
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, e_rel=1e-3):
@@ -380,7 +381,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if P is None:
         P_ = P
     else:
-        P_ = adapt_PSF(P)
+        P_ = adapt_PSF(P, (N,M))
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
@@ -426,7 +427,9 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # run the NMF with those constraints
     A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_, e_rel=e_rel)
+
+    # reshape to have shape B,N,M
     model = np.dot(A,S).reshape(B,N,M)
-    # reshape S to have shape B,N,M
     S = S.reshape(K,N,M)
+
     return A,S,model
