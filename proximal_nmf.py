@@ -280,12 +280,13 @@ def getRadialMonotonicOp(shape, px, py):
     return scipy.sparse.coo_matrix(monotonic)
 
 
-def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None):
+def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
     A = A0.copy()
     S = S0.copy()
+    S_ = S0.copy() # needed for convergence test
     K = S.shape[0]
-    beta = 0.5
+    beta = 0.75
 
     if W is not None:
         W_max = W.max()
@@ -295,29 +296,30 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
     for it in range(max_iter):
         # A: simple gradient method; need to rebind S each time
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
-        step_A = 1./ lipschitz_const(S) / W_max
+        step_A = beta**it / lipschitz_const(S) / W_max
         it_A = APGM(A, prox_like_A, step_A, max_iter=max_iter)
 
         # S: either gradient or ADMM, depending on additional constraints
         prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
-        step_S = 1./ lipschitz_const(A) / W_max
+        step_S = beta**it / lipschitz_const(A) / W_max
         if prox_S2 is None:
-            it_S = APGM(S, prox_like_S, step_S, max_iter=max_iter)
+            it_S = APGM(S_, prox_like_S, step_S, max_iter=max_iter)
         else:
             # steps set to upper limit per component
             step_S2 = step_S * lM2
-            it_S, S, _, _ = ADMM(S, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter)
+            it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter, e_rel=e_rel)
 
         print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
 
         if it_A == 0 and it_S == 0:
             break
 
-        # recompute step_sizes
-        # TODO: devise optimal schedule
-        #step_A *= beta**it
-        #step_S *= beta**it
+        # Convergence crit from Langville 2014, section 5
+        if it > 10 and np.array([np.dot(S_[k],S[k]) > (1-e_rel**2)*l2sq(S[k]) for k in range(K)]).all():
+            break
 
+        S[:,:] = S_[:,:]
+    S[:,:] = S_[:,:]
     return A,S
 
 def init_A(B, K, peaks=None, I=None):
@@ -348,7 +350,7 @@ def init_S(N, M, K, peaks=None, I=None):
             S[k,py*M+px] = np.abs(I[:,py,px].mean()) + tiny
     return S
 
-def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None):
+def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, e_rel=1e-3):
     if P is not None:
         raise NotImplementedError("PSF convolution not implemented!")
 
@@ -410,7 +412,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         prox_S2 = M2 = lM2 = None
 
     # run the NMF with those constraints
-    A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_)
+    A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_, e_rel=e_rel)
     model = np.dot(A,S).reshape(B,N,M)
     # reshape S to have shape B,N,M
     S = S.reshape(K,N,M)
