@@ -42,23 +42,28 @@ def l2sq(x):
 def l2(x):
     return np.sqrt((x**2).sum())
 
-def grad_likelihood_A(A, S, Y, W=None, P=None):
-    if W is None:
-        return np.dot(np.dot(A, S) - Y, S.T)
-    else:
-        return np.dot(W*(np.dot(A, S) - Y), S.T)
+def convolve_band(P, I):
+    return np.einsum('...ik,...k',P,I)
 
-def grad_likelihood_S(S, A, Y, W=None, P=None):
-    if W is None:
-        return np.dot(A.T, np.dot(A, S) - Y)
+def delta_data(A, S, Y, W=1, P=None):
+    if P is None:
+        return W*(np.dot(A,S) - Y)
     else:
-        return np.dot(A.T, W*(np.dot(A, S) - Y))
+        return np.einsum('...i,...im', W*(convolve_band(P, np.dot(A,S)) - Y), P)
+
+def grad_likelihood_A(A, S, Y, W=1, P=None):
+    D = delta_data(A, S, Y, W=W, P=P)
+    return np.dot(D, S.T)
+
+def grad_likelihood_S(S, A, Y, W=1, P=None):
+    D = delta_data(A, S, Y, W=W, P=P)
+    return np.dot(A.T, D)
 
 # executes one proximal step of likelihood gradient, folloVed by prox_g
-def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=None, P=None):
+def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1, P=None):
     return prox_g(A - step*grad_likelihood_A(A, S, Y, W=W, P=None), step)
 
-def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=None, P=None):
+def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=1, P=None):
     return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W, P=None), step)
 
 # split X into K components along axis
@@ -282,16 +287,16 @@ def getRadialMonotonicOp(shape, px, py):
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
+    K = S0.shape[0]
     A = A0.copy()
     S = S0.copy()
     S_ = S0.copy() # needed for convergence test
-    K = S.shape[0]
-    beta = 0.75
+    beta = 0.75    # TODO: unclear how to chose 0 < beta <= 1
 
     if W is not None:
         W_max = W.max()
     else:
-        W_max = 1
+        W = W_max = 1
 
     for it in range(max_iter):
         # A: simple gradient method; need to rebind S each time
@@ -350,9 +355,17 @@ def init_S(N, M, K, peaks=None, I=None):
             S[k,py*M+px] = np.abs(I[:,py,px].mean()) + tiny
     return S
 
+def adapt_PSF(P, shape):
+    B = P.shape[0]
+    # PSF shape can be different from image shape
+    P_ = np.zeros(B, shape[0], shape[0])
+    for b in range(B):
+        peak_idx = np.argmax(P[b])
+        px, py = np.unravel_index(peak_idx, P[b].shape)
+        # ... fill elements of P[b] in P_[b,:] so that np.dot(P_, X) acts like a convolution
+
+
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, e_rel=1e-3):
-    if P is not None:
-        raise NotImplementedError("PSF convolution not implemented!")
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -367,7 +380,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if P is None:
         P_ = P
     else:
-        P_ = P.reshape(B,N*M)
+        P_ = adapt_PSF(P)
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
