@@ -231,59 +231,160 @@ def getPeakSymmetryOp(shape, px, py):
     diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
     return diffOp
 
-def getRadialMonotonicOp(shape, px, py):
-    """Get a 2D operator to contrain radial monotonicity
+def getOffsets(width):
+    """Get the offset and slices for a sparse band diagonal array
 
-    The monotonic operator basically calculates a radial the gradient in from the edges to the peak.
-    Operating the monotonicity operator on a flattened image makes all non-monotonic pixels negative,
-    which can then be projected to the subset gradient=0 using proximal operators.
+    For an operator that interacts with its neighbors we want a band diagonal matrix,
+    where each row describes the 8 pixels that are neighbors for the reference pixel
+    (the diagonal). Regardless of the operator, these 8 bands are always the same,
+    so we make a utility function that returns the offsets (passed to scipy.sparse.diags).
 
-    The radial monotonic operator is a sparse matrix, where each diagonal element is -1
-    (except the peak position px, py) and each row has one other non-zero element, which is the
-    closest pixel that aligns with a radial line from the pixel to the peak position.
+    See `diagonalizeArray` for more on the slices and format of the array used to create
+    NxN operators that act on a data vector.
+    """
+    offsets = [-width-1, -width, -width+1, -1, 1, width-1, width, width+1]
+    slices = [slice(None, s) if s<0 else slice(s, None) for s in offsets]
+    slicesInv = [slice(-s, None) if s<0 else slice(None, -s) for s in offsets]
+    return offsets, slices, slicesInv
 
-    See DM-9143 for more.
+def diagonalizeArray(arr, shape=None, dtype=np.float64):
+    """Convert an array to a matrix that compares each pixel to its neighbors
 
-    TODO: Implement this in C++ for speed
+    Given an array with length N, create an 8xN array, where each row will be a
+    diagonal in a diagonalized array. Each column in this matrix is a row in the larger
+    NxN matrix used for an operator, except that this 2D array only contains the values
+    used to create the bands in the band diagonal matrix.
+
+    Because the off-diagonal bands have less than N elements, ``getOffsets`` is used to
+    create a mask that will set the elements of the array that are outside of the matrix to zero.
+
+    ``arr`` is the vector to diagonalize, for example the distance from each pixel to the peak,
+    or the angle of the vector to the peak.
+
+    ``shape`` is the shape of the original image.
+    """
+    if shape is None:
+        height, width = arr.shape
+        data = arr.flatten()
+    elif len(arr.shape)==1:
+        height, width = shape
+        data = np.copy(arr)
+    else:
+        raise ValueError("Expected either a 2D array or a 1D array and a shape")
+    size = width * height
+
+    # We hard code 8 rows, since each row corresponds to a neighbor
+    # of each pixel.
+    diagonals = np.zeros((8, size), dtype=dtype)
+    mask = np.ones((8, size), dtype=bool)
+    offsets, slices, slicesInv = getOffsets(width)
+    for n, s in enumerate(slices):
+        diagonals[n][slicesInv[n]] = data[s]
+        mask[n][slicesInv[n]] = 0
+
+    # Create a mask to hide false neighbors for pixels on the edge
+    # (for example, a pixel on the left edge should not be connected to the
+    # pixel to its immediate left in the flattened vector, since that pixel
+    # is actual the far right pixel on the row above it).
+    mask[0][np.arange(1,height)*width] = 1
+    mask[2][np.arange(height)*width-1] = 1
+    mask[3][np.arange(1,height)*width] = 1
+    mask[4][np.arange(1,height)*width-1] = 1
+    mask[5][np.arange(height)*width] = 1
+    mask[7][np.arange(1,height-1)*width-1] = 1
+
+    return diagonals, mask
+
+def diagonalsToSparse(diagonals, shape, dtype=np.float64):
+    """Convert a diagonalized array into a sparse diagonal matrix
+
+    ``diagonalizeArray`` creates an 8xN array representing the bands that describe the
+    interactions of a pixel with its neighbors. This function takes that 8xN array and converts
+    it into a sparse diagonal matrix.
+
+    See `diagonalizeArray` for the details of the 8xN array.
     """
     height, width = shape
-    center = py*width+px
-    monotonic = -np.eye(width*height, width*height)
-    monotonic[center, center] = 0
+    offsets, slices, slicesInv = getOffsets(width)
+    diags = [diag[slicesInv[n]] for n, diag in enumerate(diagonals)]
 
-    # Set the pixel in line with the radius to 1 for each pixel
-    for h in range(height):
-        for w in range(width):
-            if h==py and w==px:
-                continue
-            dx = px-w
-            dy = py-h
-            pixel = h*width + w
-            if px-w>py-h:
-                if px-w>=h-py:
-                    x = w + 1
-                    y = h + int(np.round(dy/dx))
-                elif px-w<h-py:
-                    x = w - int(np.round(dx/dy))
-                    y = h - 1
-            elif px-w<py-h:
-                if px-w>=h-py:
-                    x = w + int(np.round(dx/dy))
-                    y = h + 1
-                elif px-w<h-py:
-                    x = w - 1
-                    y = h - int(np.round(dy/dx))
-            else:
-                if w<px:
-                    x = w + 1
-                    y = h + 1
-                elif w>px:
-                    x = w - 1
-                    y = h - 1
-            monotonic[pixel, y*width+x] = 1
+    # This block hides false neighbors for the edge pixels (see comments in diagonalizeArray code)
+    # For now we assume that the mask in diagonalizeArray has already been applied, making these
+    # lines redundant and unecessary, but if that changes in the future we can uncomment them
+    #diags[0][np.arange(1,height-1)*width-1] = 0
+    #diags[2][np.arange(height)*width] = 0
+    #diags[3][np.arange(1,height)*width-1] = 0
+    #diags[4][np.arange(1,height)*width-1] = 0
+    #diags[5][np.arange(height)*width] = 0
+    #diags[7][np.arange(1,height-1)*width-1] = 0
 
-    return scipy.sparse.coo_matrix(monotonic)
+    diagonalArr = scipy.sparse.diags(diags, offsets, dtype=dtype)
+    return diagonalArr
 
+def getRadialMonotonicOp(shape, px, py, display=False):
+    """Create an operator to constrain radial monotonicity
+
+    This version of the radial monotonicity operator selects all of the pixels closer to the peak
+    for each pixel and weights their flux based on their alignment with a vector from the pixel
+    to the peak. In order to quickly create this using sparse matrices, its construction is a bit opaque.
+    """
+    # Calculate the distance between each pixel and the peak
+    size = shape[0]*shape[1]
+    x = np.arange(shape[1])
+    y = np.arange(shape[0])
+    X,Y = np.meshgrid(x,y)
+    X = X - px
+    Y = Y - py
+    distance = np.sqrt(X**2+Y**2)
+
+    # Find each pixels neighbors further from the peak and mark them as invalid
+    # (to be removed later)
+    distArr, mask = diagonalizeArray(distance, dtype=np.float64)
+    relativeDist = (distance.flatten()[:,None]-distArr.T).T
+    invalidPix = relativeDist<=0
+
+    # Calculate the angle between each pixel and the x axis, relative to the peak position
+    # (also avoid dividing by zero and set the tan(infinity) pixel values to pi/2 manually)
+    inf = X==0
+    tX = X.copy()
+    tX[inf] = 1
+    angles = np.arctan2(-Y,-tX)
+    angles[inf&(Y!=0)] = 0.5*np.pi*np.sign(angles[inf&(Y!=0)])
+
+    # Calcualte the angle between each pixel and it's neighbors
+    xArr, m = diagonalizeArray(X)
+    yArr, m = diagonalizeArray(Y)
+    dx = (xArr.T-X.flatten()[:, None]).T
+    dy = (yArr.T-Y.flatten()[:, None]).T
+    # Avoid dividing by zero and set the tan(infinity) pixel values to pi/2 manually
+    inf = dx==0
+    dx[inf] = 1
+    relativeAngles = np.arctan2(dy,dx)
+    relativeAngles[inf&(dy!=0)] = 0.5*np.pi*np.sign(relativeAngles[inf&(dy!=0)])
+
+    # Find the difference between each pixels angle with the peak
+    # and the relative angles to its neighbors, and take the
+    # cos to find its neighbors weight
+    dAngles = (angles.flatten()[:, None]-relativeAngles.T).T
+    cosWeight = np.cos(dAngles)
+    # Mask edge pixels, array elements outside the operator (for offdiagonal bands with < N elements),
+    # and neighbors further from the peak than the reference pixel
+    cosWeight[invalidPix] = 0
+    cosWeight[mask] = 0
+
+    # Normalize the cos weights for each pixel
+    normalize = np.sum(cosWeight, axis=0)
+    normalize[normalize==0] = 1
+    cosNorm = (cosWeight.T/normalize[:,None]).T
+    cosNorm[mask] = 0
+    cosArr = diagonalsToSparse(cosNorm, shape)
+
+    # The identity with the peak pixel removed represents the reference pixels
+    diagonal = np.ones(size)
+    diagonal[px+py*shape[1]] = 0
+    monotonic = cosArr-scipy.sparse.diags(diagonal)
+
+    return monotonic.tocoo()#, (cosWeight, relativeAngles, angles, dAngles, invalidPix, xArr, X, mask, normalize)
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
