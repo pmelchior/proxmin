@@ -172,14 +172,14 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
 def lipschitz_const(M):
     return np.real(np.linalg.eigvals(np.dot(M, M.T)).max())
 
-def getPeakSymmetry(shape, px, py):
+def getPeakSymmetry(shape, px, py, fillValue=0):
     """Build the operator to symmetrize a the intensities for a single row
     """
     center = (np.array(shape)-1)/2.0
     # If the peak is centered at the middle of the footprint,
     # make the entire footprint symmetric
     if px==center[1] and py==center[0]:
-        return np.fliplr(np.eye(shape[0]*shape[1]))
+        return scipy.sparse.coo_matrix(np.fliplr(np.eye(shape[0]*shape[1])))
 
     # Otherwise, find the bounding box that contains the minimum number of pixels needed to symmetrize
     if py<(shape[0]-1)/2.:
@@ -213,23 +213,32 @@ def getPeakSymmetry(shape, px, py):
     for i in range(0,tHeight-1):
         for j in range(extraWidth):
             idx = (i+1)*tWidth+(i*extraWidth)+j
-            subOp[idx, idx] = 0
+            subOp[idx, idx] = fillValue
     subOp = np.fliplr(subOp)
 
     smin = ymin*fpWidth+xmin
     smax = (ymax-1)*fpWidth+xmax
-    symmetryOp = np.zeros((fpSize, fpSize))
+    if fillValue!=0:
+        symmetryOp = np.identity(fpSize)*fillValue
+    else:
+        symmetryOp = np.zeros((fpSize, fpSize))
     symmetryOp[smin:smax,smin:smax] = subOp
 
     # Return a sparse matrix, which greatly speeds up the processing
     return scipy.sparse.coo_matrix(symmetryOp)
 
-def getPeakSymmetryOp(shape, px, py):
+def getPeakSymmetryOp(shape, px, py, fillValue=0):
     """Operator to calculate the difference from the symmetric intensities
     """
-    symOp = getPeakSymmetry(shape, px, py)
+    symOp = getPeakSymmetry(shape, px, py, fillValue)
     diffOp = scipy.sparse.identity(symOp.shape[0])-symOp
+    # In cases where the symmetry operator is very small (eg. a small isolated source)
+    # scipy doesn't return a sparse matrix, so we test whether or not the matrix is sparse
+    # and if it is, use a sparse matrix that works best with the proximal operators.
+    if hasattr(diffOp, "tocoo"):
+        diffOp = diffOp.tocoo()
     return diffOp
+
 
 def getOffsets(width):
     """Get the offset and slices for a sparse band diagonal array
@@ -509,7 +518,8 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                 C = getRadialMonotonicOp((N,M), px, py)
             if c == "S":
                 px, py = peaks[k]
-                C = getPeakSymmetryOp((N,M), px, py)
+                fillValue = 1
+                C = getPeakSymmetryOp((N,M), px, py, fillValue=fillValue)
             M2.append(C)
 
         # calculate step sizes for each constraint matrix
