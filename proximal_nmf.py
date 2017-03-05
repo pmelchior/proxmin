@@ -239,7 +239,6 @@ def getPeakSymmetryOp(shape, px, py, fillValue=0):
         diffOp = diffOp.tocoo()
     return diffOp
 
-
 def getOffsets(width):
     """Get the offset and slices for a sparse band diagonal array
 
@@ -330,7 +329,7 @@ def diagonalsToSparse(diagonals, shape, dtype=np.float64):
     diagonalArr = scipy.sparse.diags(diags, offsets, dtype=dtype)
     return diagonalArr
 
-def getRadialMonotonicOp(shape, px, py, display=False):
+def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=1):
     """Create an operator to constrain radial monotonicity
 
     This version of the radial monotonicity operator selects all of the pixels closer to the peak
@@ -381,19 +380,31 @@ def getRadialMonotonicOp(shape, px, py, display=False):
     cosWeight[invalidPix] = 0
     cosWeight[mask] = 0
 
-    # Normalize the cos weights for each pixel
-    normalize = np.sum(cosWeight, axis=0)
-    normalize[normalize==0] = 1
-    cosNorm = (cosWeight.T/normalize[:,None]).T
-    cosNorm[mask] = 0
+    if useNearest:
+        # Only use a single pixel most in line with peak
+        cosNorm = np.zeros_like(cosWeight)
+        columnIndices =  np.arange(cosWeight.shape[1])
+        maxIndices = np.argmax(cosWeight, axis=0)
+        indices = maxIndices*cosNorm.shape[1]+columnIndices
+        indices = np.unravel_index(indices, cosNorm.shape)
+        cosNorm[indices] = minGradient
+        # Remove the reference for the peak pixel
+        cosNorm[:,px+py*shape[1]] = 0
+    else:
+        # Normalize the cos weights for each pixel
+        normalize = np.sum(cosWeight, axis=0)
+        normalize[normalize==0] = 1
+        cosNorm = (cosWeight.T/normalize[:,None]).T
+        cosNorm[mask] = 0
     cosArr = diagonalsToSparse(cosNorm, shape)
 
     # The identity with the peak pixel removed represents the reference pixels
     diagonal = np.ones(size)
-    diagonal[px+py*shape[1]] = 0
+    diagonal[px+py*shape[1]] = -1
     monotonic = cosArr-scipy.sparse.diags(diagonal)
 
-    return monotonic.tocoo()#, (cosWeight, relativeAngles, angles, dAngles, invalidPix, xArr, X, mask, normalize)
+    return monotonic.tocoo()
+
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
