@@ -2,39 +2,39 @@ import numpy as np, scipy.sparse, scipy.sparse.linalg
 from functools import partial
 
 # identity
-def prox_id(X, l=None):
+def prox_id(X, step):
     return X
 
 # projection onto 0
-def prox_zero(X,l=None):
+def prox_zero(X, step):
     return np.zeros_like(X)
 
-# hard thresholding: X if X >= k, otherVise 0
-# NOTE: modified X in place
-def prox_hard(X, l):
-    below = X-l < 0
+# hard thresholding: X if X >= k, otherwise 0
+# NOTE: modifies X in place
+def prox_hard(X, step, l=0):
+    below = X - l*step < 0
     X[below] = 0
     return X
 
 # projection onto non-negative numbers
-def prox_plus(X, l=None):
-    return prox_hard(X, 0)
+def prox_plus(X, step):
+    return prox_hard(X, step, l=0)
 
 # soft thresholding operator
-def prox_soft(X, l):
-    return np.sign(X)*prox_plus(np.abs(X) - l)
+def prox_soft(X, step, abs, l=0):
+    return np.sign(X)*prox_plus(np.abs(X) - l*step, step)
 
 # same but with projection onto non-negative
-def prox_soft_plus(X, l):
-    return prox_plus(np.abs(X) - l)
+def prox_soft_plus(X, step, l=0):
+    return prox_plus(np.abs(X) - l*step, step)
 
 # projection onto sum=1 along each axis
-def prox_unity(X, l=None, axis=0):
+def prox_unity(X, step, axis=0):
     return X / np.sum(X, axis=axis, keepdims=True)
 
 # same but with projection onto non-negative
-def prox_unity_plus(X, l=None, axis=0):
-    return prox_unity(prox_plus(X), axis=axis)
+def prox_unity_plus(X, step, axis=0):
+    return prox_unity(prox_plus(X, step), step, axis=axis)
 
 def l2sq(x):
     return (x**2).sum()
@@ -422,12 +422,13 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
     for it in range(max_iter):
         # A: simple gradient method; need to rebind S each time
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
-        step_A = beta**it / lipschitz_const(S) / W_max
+        step_A = 1. / lipschitz_const(S) / W_max
         it_A = APGM(A, prox_like_A, step_A, max_iter=max_iter)
 
         # S: either gradient or ADMM, depending on additional constraints
         prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
-        step_S = beta**it / lipschitz_const(A) / W_max
+        #step_S = beta**it / lipschitz_const(A) / W_max
+        step_S = 1./ lipschitz_const(A) / W_max
         if prox_S2 is None:
             it_S = APGM(S_, prox_like_S, step_S, max_iter=max_iter)
         else:
@@ -459,7 +460,7 @@ def init_A(B, K, peaks=None, I=None):
         for k in range(K):
             px,py = peaks[k]
             A[:,k] = I[:,py,px]
-    A = prox_unity_plus(A)
+    A = prox_unity_plus(A, 0)
     return A
 
 def init_S(N, M, K, peaks=None, I=None):
@@ -487,7 +488,7 @@ def adapt_PSF(P, shape):
     return P
 
 
-def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, e_rel=1e-3):
+def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, l0_thresh=None, e_rel=1e-3):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -513,8 +514,10 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     prox_A = prox_unity_plus
 
     # S: non-negativity or L0/L1 sparsity plus ...
-    # TODO: 2) decouple step from proximal lambda when using prox_hard or prox_soft
-    prox_S = prox_plus # prox_hard
+    if l0_thresh is None:
+        prox_S = prox_plus
+    else:
+        prox_S = partial(prox_hard, l=l0_thresh)
 
     # ... additional constraint for each component of S
     if constraints is not None:
