@@ -21,7 +21,7 @@ def prox_plus(X, step):
     return prox_hard(X, step, l=0)
 
 # soft thresholding operator
-def prox_soft(X, step, abs, l=0):
+def prox_soft(X, step, l=0):
     return np.sign(X)*prox_plus(np.abs(X) - l*step, step)
 
 # same but with projection onto non-negative
@@ -517,7 +517,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if l0_thresh is None:
         prox_S = prox_plus
     else:
-        prox_S = partial(prox_hard, l=l0_thresh)
+        prox_S = partial(prox_soft, l=l0_thresh)
 
     # ... additional constraint for each component of S
     if constraints is not None:
