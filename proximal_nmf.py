@@ -239,7 +239,7 @@ def getPeakSymmetryOp(shape, px, py, fillValue=0):
         diffOp = diffOp.tocoo()
     return diffOp
 
-def getOffsets(width):
+def getOffsets(width, coords=None):
     """Get the offset and slices for a sparse band diagonal array
 
     For an operator that interacts with its neighbors we want a band diagonal matrix,
@@ -250,7 +250,10 @@ def getOffsets(width):
     See `diagonalizeArray` for more on the slices and format of the array used to create
     NxN operators that act on a data vector.
     """
-    offsets = [-width-1, -width, -width+1, -1, 1, width-1, width, width+1]
+    # Use the neighboring pixels by default
+    if coords is None:
+        coords = [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1, 1), (0,1), (1,1)]
+    offsets = [width*y+x for y,x in coords]
     slices = [slice(None, s) if s<0 else slice(s, None) for s in offsets]
     slicesInv = [slice(-s, None) if s<0 else slice(None, -s) for s in offsets]
     return offsets, slices, slicesInv
@@ -405,6 +408,69 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=1):
 
     return monotonic.tocoo()
 
+def getPSFOp(psfImg, imgShape, threshold=1e-2):
+    """Create an operator to convolve intensities with the PSF
+
+    Given a psf image ``psfImg`` and the shape of the blended image ``imgShape``,
+    make a banded matrix out of all the pixels in ``psfImg`` above ``threshold``
+    that acts as the PSF operator.
+
+    TODO: Optimize this algorithm to
+    """
+    height, width = imgShape
+    size = width * height
+
+    # Hide pixels in the psf below the threshold
+    psf = np.copy(psfImg)
+    psf[psf<threshold] = 0
+
+    # Calculate the coordinates of the pixels in the psf image above the threshold
+    indices = np.where(psf>0)
+    indices = np.dstack(indices)[0]
+    cy, cx = np.unravel_index(np.argmax(psf), psf.shape)
+    coords = indices-np.array([cy,cx])
+
+    # Create the PSF Operator
+    offsets, slices, slicesInv = getOffsets(width, coords)
+    psfDiags = [psf[y,x] for y,x in indices]
+    psfOp = scipy.sparse.diags(psfDiags, offsets, shape=(size, size), dtype=np.float64)
+    psfOp = psfOp.tolil()
+
+    # Remove entries for pixels on the left or right edges
+    cxRange = np.unique([cx for cy,cx in coords])
+    for h in range(height):
+        for y,x in coords:
+            # Left edge
+            if x<0 and width*(h+y)+x>=0 and h+y<=height:
+                psfOp[width*h, width*(h+y)+x] = 0
+
+                # Pixels closer to the left edge
+                # than the radius of the psf
+                for x_ in cxRange[cxRange<0]:
+                    if (x<x_ and
+                        width*h-x_>=0 and
+                        width*(h+y)+x-x_>=0 and
+                        h+y<=height
+                    ):
+                        psfOp[width*h-x_, width*(h+y)+x-x_] = 0
+
+            # Right edge
+            if x>0 and width*(h+1)-1>=0 and width*(h+y+1)+x-1>=0 and h+y<=height and width*(h+1+y)+x-1<size:
+                psfOp[width*(h+1)-1, width*(h+y+1)+x-1] = 0
+
+                for x_ in cxRange[cxRange>0]:
+                    # Near right edge
+                    if (x>x_ and
+                        width*(h+1)-x_-1>=0 and
+                        width*(h+y+1)+x-x_-1>=0 and
+                        h+y<=height and
+                        width*(h+1+y)+x-x_-1<size
+                    ):
+                        psfOp[width*(h+1)-x_-1, width*(h+y+1)+x-x_-1] = 0
+
+    # Return the transpose, which correctly convolves the data with the PSF
+    return psfOp.T.tocoo()
+
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
 
@@ -412,7 +478,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
     A = A0.copy()
     S = S0.copy()
     S_ = S0.copy() # needed for convergence test
-    beta = 0.75    # TODO: unclear how to chose 0 < beta <= 1
+    beta = 1. # 0.75    # TODO: unclear how to chose 0 < beta <= 1
 
     if W is not None:
         W_max = W.max()
@@ -422,13 +488,12 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
     for it in range(max_iter):
         # A: simple gradient method; need to rebind S each time
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
-        step_A = 1. / lipschitz_const(S) / W_max
+        step_A = beta**it / lipschitz_const(S) / W_max
         it_A = APGM(A, prox_like_A, step_A, max_iter=max_iter)
 
         # S: either gradient or ADMM, depending on additional constraints
         prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
-        #step_S = beta**it / lipschitz_const(A) / W_max
-        step_S = 1./ lipschitz_const(A) / W_max
+        step_S = beta**it / lipschitz_const(A) / W_max
         if prox_S2 is None:
             it_S = APGM(S_, prox_like_S, step_S, max_iter=max_iter)
         else:
@@ -477,18 +542,17 @@ def init_S(N, M, K, peaks=None, I=None):
             S[k,py*M+px] = np.abs(I[:,py,px].mean()) + tiny
     return S
 
-def adapt_PSF(P, shape):
-    B = P.shape[0]
-    # PSF shape can be different from image shape
-    P_ = np.zeros((B, shape[0], shape[0]))
+def adapt_PSF(P, B, shape, threshold=1e-2):
+    # TODO: Should be simpler for likelihood gradients if P = const across B
+    P_ = np.zeros((B, shape[0]*shape[1], shape[0]*shape[1]))
     for b in range(B):
-        peak_idx = np.argmax(P[b])
-        px, py = np.unravel_index(peak_idx, P[b].shape)
-        # ... fill elements of P[b] in P_[b,:] so that np.dot(P_, X) acts like a convolution
-    return P
+        # TODO: would be much faster to pass sparse matrices along,
+        # but need 3D sparse containers or modification of delta_data()
+        P_[b,:,:] = getPSFOp(P[b], shape, threshold=threshold).toarray()
+    return P_
 
 
-def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, l0_thresh=None, e_rel=1e-3):
+def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, l0_thresh=None, l1_thresh=None, e_rel=1e-3):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -503,7 +567,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if P is None:
         P_ = P
     else:
-        P_ = adapt_PSF(P, (N,M))
+        P_ = adapt_PSF(P, B, (N,M), threshold=1e-2)
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
@@ -514,10 +578,16 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     prox_A = prox_unity_plus
 
     # S: non-negativity or L0/L1 sparsity plus ...
-    if l0_thresh is None:
+    if l0_thresh is None and l1_thresh is None:
         prox_S = prox_plus
     else:
-        prox_S = partial(prox_soft, l=l0_thresh)
+        # L0 has preference
+        if l0_thresh is not None:
+            if l1_thresh is not None:
+                print "Warning: l1_thresh ignored in favor of l0_thresh"
+            prox_S = partial(prox_hard, l=l0_thresh)
+        else:
+            prox_S = partial(prox_soft, l=l1_thresh)
 
     # ... additional constraint for each component of S
     if constraints is not None:
@@ -542,7 +612,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
         prox_constraints = {
             " ": prox_id,    # do nothing
-            "M": prox_plus,  # positive gradients
+            "M": prox_plus,  # positive gradients. TODO: Maybe require minimum here?
             "S": prox_zero   # zero deviation of mirrored pixels
         }
         prox_Cs = [prox_constraints[c] for c in constraints]
@@ -554,7 +624,10 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_, e_rel=e_rel)
 
     # reshape to have shape B,N,M
-    model = np.dot(A,S).reshape(B,N,M)
+    model = np.dot(A,S)
+    if P is not None:
+        model = convolve_band(P_, model)
+    model = model.reshape(B,N,M)
     S = S.reshape(K,N,M)
 
     return A,S,model
