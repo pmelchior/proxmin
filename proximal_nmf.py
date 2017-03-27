@@ -252,7 +252,7 @@ def getOffsets(width, coords=None):
     """
     # Use the neighboring pixels by default
     if coords is None:
-        coords = [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1, 1), (0,1), (1,1)]
+        coords = [(-1,-1), (-1,0), (-1, 1), (0,-1), (0,1), (1, -1), (1,0), (1,1)]
     offsets = [width*y+x for y,x in coords]
     slices = [slice(None, s) if s<0 else slice(s, None) for s in offsets]
     slicesInv = [slice(-s, None) if s<0 else slice(None, -s) for s in offsets]
