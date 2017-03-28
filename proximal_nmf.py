@@ -24,7 +24,7 @@ def prox_plus(X, step):
 # NOTE: modifies X in place
 def prox_min(X, step, l=0):
     below = X - l*step < 0
-    X[below] = l
+    X[below] = l*step
     return X
 
 # soft thresholding operator
