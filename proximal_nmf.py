@@ -20,13 +20,20 @@ def prox_hard(X, step, l=0):
 def prox_plus(X, step):
     return prox_hard(X, step, l=0)
 
+# projection onto numbers above l
+# NOTE: modifies X in place
+def prox_min(X, step, l=0):
+    below = X - l*step < 0
+    X[below] = l
+    return X
+
 # soft thresholding operator
 def prox_soft(X, step, l=0):
     return np.sign(X)*prox_plus(np.abs(X) - l*step, step)
 
 # same but with projection onto non-negative
 def prox_soft_plus(X, step, l=0):
-    return prox_plus(np.abs(X) - l*step, step)
+    return prox_plus(prox_soft(X, step, l=l), step)
 
 # projection onto sum=1 along each axis
 def prox_unity(X, step, axis=0):
@@ -43,13 +50,29 @@ def l2(x):
     return np.sqrt((x**2).sum())
 
 def convolve_band(P, I):
-    return np.einsum('...ik,...k',P,I)
+    if isinstance(P, list) is False:
+        return P.dot(I.T).T
+    else:
+        PI = np.empty(I.shape)
+        B = I.shape[0]
+        for b in range(B):
+            PI[b] = P[b].dot(I[b])
+        return PI
 
 def delta_data(A, S, Y, W=1, P=None):
     if P is None:
         return W*(np.dot(A,S) - Y)
     else:
-        return np.einsum('...i,...im', W*(convolve_band(P, np.dot(A,S)) - Y), P)
+        # all the tranposes are needed to allow for the sparse matrix dot
+        # products to be callable
+        if isinstance(P, list) is False:
+            return P.T.dot(W.T*(P.dot(np.dot(S.T, A.T)) - Y.T)).T
+        else:
+            B,N = A.shape[0], S.shape[1]
+            EWP = np.empty((B,N))
+            for b in range(B):
+                EWP[b] = P[b].T.dot(W[b]*(P[b].dot(np.dot(S.T, A[b])) - Y[b]))
+            return EWP
 
 def grad_likelihood_A(A, S, Y, W=1, P=None):
     D = delta_data(A, S, Y, W=W, P=P)
@@ -543,16 +566,17 @@ def init_S(N, M, K, peaks=None, I=None):
     return S
 
 def adapt_PSF(P, B, shape, threshold=1e-2):
-    # TODO: Should be simpler for likelihood gradients if P = const across B
-    P_ = np.zeros((B, shape[0]*shape[1], shape[0]*shape[1]))
+    # Simpler for likelihood gradients if P = const across B
+    if isinstance(P, list) is False: # single matrix
+        return getPSFOp(P, shape, threshold=threshold)
+
+    P_ = []
     for b in range(B):
-        # TODO: would be much faster to pass sparse matrices along,
-        # but need 3D sparse containers or modification of delta_data()
-        P_[b,:,:] = getPSFOp(P[b], shape, threshold=threshold).toarray()
+        P_.append(getPSFOp(P[b], shape, threshold=threshold))
     return P_
 
 
-def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, l0_thresh=None, l1_thresh=None, e_rel=1e-3):
+def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -587,7 +611,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                 print "Warning: l1_thresh ignored in favor of l0_thresh"
             prox_S = partial(prox_hard, l=l0_thresh)
         else:
-            prox_S = partial(prox_soft, l=l1_thresh)
+            prox_S = partial(prox_soft_plus, l=l1_thresh)
 
     # ... additional constraint for each component of S
     if constraints is not None:
@@ -599,7 +623,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                 C = scipy.sparse.identity(N*M)
             if c == "M":
                 px, py = peaks[k]
-                C = getRadialMonotonicOp((N,M), px, py)
+                C = getRadialMonotonicOp((N,M), px, py, useNearest=False)
             if c == "S":
                 px, py = peaks[k]
                 fillValue = 1
@@ -612,7 +636,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
         prox_constraints = {
             " ": prox_id,    # do nothing
-            "M": prox_plus,  # positive gradients. TODO: Maybe require minimum here?
+            "M": partial(prox_min, l=gradient_thresh), # positive gradients
             "S": prox_zero   # zero deviation of mirrored pixels
         }
         prox_Cs = [prox_constraints[c] for c in constraints]
