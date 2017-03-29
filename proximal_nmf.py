@@ -1,5 +1,11 @@
+from __future__ import print_function, division
 import numpy as np, scipy.sparse, scipy.sparse.linalg
 from functools import partial
+
+import logging
+
+logging.basicConfig()
+logger = logging.getLogger("lsst.meas.deblender.proximal_nmf")
 
 # identity
 def prox_id(X, step):
@@ -446,6 +452,7 @@ def getPSFOp(psfImg, imgShape, threshold=1e-2):
     # Hide pixels in the psf below the threshold
     psf = np.copy(psfImg)
     psf[psf<threshold] = 0
+    logger.info("Total psf pixels: {0}".format(np.sum(psf>0)))
 
     # Calculate the coordinates of the pixels in the psf image above the threshold
     indices = np.where(psf>0)
@@ -524,7 +531,7 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
             step_S2 = step_S * lM2
             it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter, e_rel=e_rel)
 
-        print it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]
+        logger.info("{0} {1} {2} {3} {4} {5}".format(it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]))
 
         if it_A == 0 and it_S == 0:
             break
@@ -576,7 +583,9 @@ def adapt_PSF(P, B, shape, threshold=1e-2):
     return P_
 
 
-def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None, l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3):
+def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None,
+                  l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3, psf_thresh=1e-2,
+                  monotonicUseNearest=False, nonSymmetricFill=1):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -591,7 +600,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     if P is None:
         P_ = P
     else:
-        P_ = adapt_PSF(P, B, (N,M), threshold=1e-2)
+        P_ = adapt_PSF(P, B, (N,M), threshold=psf_thresh)
 
     # init matrices
     A = init_A(B, K, I=I, peaks=peaks)
@@ -608,7 +617,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
         # L0 has preference
         if l0_thresh is not None:
             if l1_thresh is not None:
-                print "Warning: l1_thresh ignored in favor of l0_thresh"
+                logger.warn("Warning: l1_thresh ignored in favor of l0_thresh")
             prox_S = partial(prox_hard, l=l0_thresh)
         else:
             prox_S = partial(prox_soft_plus, l=l1_thresh)
@@ -623,11 +632,10 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                 C = scipy.sparse.identity(N*M)
             if c == "M":
                 px, py = peaks[k]
-                C = getRadialMonotonicOp((N,M), px, py, useNearest=False)
+                C = getRadialMonotonicOp((N,M), px, py, useNearest=monotonicUseNearest)
             if c == "S":
                 px, py = peaks[k]
-                fillValue = 1
-                C = getPeakSymmetryOp((N,M), px, py, fillValue=fillValue)
+                C = getPeakSymmetryOp((N,M), px, py, fillValue=nonSymmetricFill)
             M2.append(C)
 
         # calculate step sizes for each constraint matrix
@@ -654,4 +662,4 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     model = model.reshape(B,N,M)
     S = S.reshape(K,N,M)
 
-    return A,S,model
+    return A,S,model,P_
