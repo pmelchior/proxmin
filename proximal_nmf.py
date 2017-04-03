@@ -197,6 +197,54 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
 
     return it, X, Z, U
 
+def SDMM(X0, prox_f, step_f, proxOps, proxSteps, constraints, max_iter=1000, e_rel=1e-3):
+    """Implement Simultaneous-Direction Method of Multipliers
+    
+    This implements the SDMM algorithm derived from Algorithm 7.9 from Combettes and Pesquet (2009),
+    Section 4.4.2 in Parikh and Boyd (2013), and Eq. 2.2 in Andreani et al. (2007).
+    
+    In Combettes and Pesquet (2009) they use a matrix inverse to solve the problem.
+    In our case that is the inverse of a sparse matrix, which is no longer sparse and too
+    costly to implement.
+    The `scipy.sparse.linalg` module does have a method to solve a sparse matrix equation,
+    using Algorithm 7.9 directly still does not yield the correct result,
+    as the treatment of penalties due to constraints are on equal footing with our likelihood
+    proximal operator and require a significant change in the way we calculate step sizes to converge.
+    
+    Instead we calculate the constraint vectors (as in SDMM) but extend the update of the ``X`` matrix
+    using a modified version of the ADMM X update function (from Parikh and Boyd, 2009),
+    using an augmented Lagrangian for multiple linear constraints as given in Andreani et al. (2007).
+    
+    In the language of Combettes and Pesquet (2009), constraints = list of Li,
+    proxOps = list of ``prox_{gamma g i}``.
+    """
+    # Initialization
+    X = X0.copy()
+    N,M = X0.shape
+    Y = np.zeros((len(constraints), N, M))
+    Z = np.zeros_like(Y)
+    for c, C in enumerate(constraints):
+        Y[c] = dot_components(C,X)
+    
+    # Update the constrained matrix
+    for n in range(max_iter):
+        linearization = [
+            step_f/proxSteps[i] * dot_components(constraints[i],
+                                                 dot_components(constraints[i],
+                                                                X) - Y[i] + Z[i], transpose=True)
+            for i in range(len(constraints))]
+        X = prox_f(X - np.sum(linearization, axis=0), step=step_f)
+        #logger.info("max: {0}, min: {1}".format(np.max(X), np.min(X)))
+        # Iterate over the different constraints
+        for i in range(len(constraints)):
+            # Apply the constraint for each peak to the peak intensities
+            Si = dot_components(constraints[i], X)
+            Y[i] = proxOps[i](Si+Z[i], step=proxSteps[i])
+            Z[i] = Z[i] + Si - Y[i]
+        
+        # TODO: Create Stopping Criteria
+    
+    return n, X, Y, Z
 
 def lipschitz_const(M):
     return np.real(np.linalg.eigvals(np.dot(M, M.T)).max())
@@ -502,7 +550,8 @@ def getPSFOp(psfImg, imgShape, threshold=1e-2):
     return psfOp.T.tocoo()
 
 
-def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=1000, W=None, P=None, e_rel=1e-3):
+def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
+        max_iter=1000, W=None, P=None, e_rel=1e-3, algorithm='ADMM'):
 
     K = S0.shape[0]
     A = A0.copy()
@@ -524,14 +573,25 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None, max_iter=100
         # S: either gradient or ADMM, depending on additional constraints
         prox_like_S = partial(prox_likelihood_S, A=A, Y=Y, prox_g=prox_S, W=W, P=P)
         step_S = beta**it / lipschitz_const(A) / W_max
-        if prox_S2 is None:
+        if prox_S2 is None or algorithm == "APGM":
             it_S = APGM(S_, prox_like_S, step_S, max_iter=max_iter)
-        else:
+        elif algorithm == "ADMM":
             # steps set to upper limit per component
             step_S2 = step_S * lM2
-            it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2, max_iter=max_iter, e_rel=e_rel)
+            it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2,
+                                  max_iter=max_iter, e_rel=e_rel)
+        elif algorithm == "SDMM":
+            # TODO: Check that we are properly setting the step size.
+            # Currently I am just using the same form as ADMM, with a slightly modified
+            # lM2 in nmf_deblender
+            step_S2 = step_S * lM2
+            it_S, S_, _, _ = SDMM(S_, prox_like_S, step_S, prox_S2, step_S2,
+                                  constraints=M2, max_iter=max_iter, e_rel=e_rel)
+        else:
+            raise Exception("Unexpected 'algorithm' to be 'APGM', 'ADMM', or 'SDMM'")
 
-        logger.info("{0} {1} {2} {3} {4} {5}".format(it, step_A, it_A, step_S, it_S, [(S[i,:] > 0).sum() for i in range(S.shape[0])]))
+        logger.info("{0} {1} {2} {3} {4} {5}".format(it, step_A, it_A, step_S, it_S,
+                                                     [(S[i,:] > 0).sum()for i in range(S.shape[0])]))
 
         if it_A == 0 and it_S == 0:
             break
@@ -583,9 +643,20 @@ def adapt_PSF(P, B, shape, threshold=1e-2):
     return P_
 
 
+def get_constraints(constraint, (px, py), (N, M), useNearest=True, fillValue=1):
+    """Get appropriate constraint operator
+    """
+    if constraint == " ":
+        return scipy.sparse.identity(N*M)
+    if constraint.upper() == "M":
+        return getRadialMonotonicOp((N,M), px, py, useNearest=useNearest)
+    if constraint.upper() == "S":
+        return getPeakSymmetryOp((N,M), px, py, fillValue=fillValue)
+    raise ValueError("'constraint' should be in [' ', 'M', 'S'] but received '{0}'".format(constraint))
+
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None,
                   l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3, psf_thresh=1e-2,
-                  monotonicUseNearest=False, nonSymmetricFill=1):
+                  monotonicUseNearest=False, nonSymmetricFill=1, algorithm="ADMM"):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -624,36 +695,51 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # ... additional constraint for each component of S
     if constraints is not None:
-        # ... initialize the constraint matrices ...
-        M2 = []
-        for k in range(K):
-            c = constraints[k]
-            if c == " ":
-                C = scipy.sparse.identity(N*M)
-            if c == "M":
-                px, py = peaks[k]
-                C = getRadialMonotonicOp((N,M), px, py, useNearest=monotonicUseNearest)
-            if c == "S":
-                px, py = peaks[k]
-                C = getPeakSymmetryOp((N,M), px, py, fillValue=nonSymmetricFill)
-            M2.append(C)
-
-        # calculate step sizes for each constraint matrix
-        # TODO: some of those are trivial to compute...
-        lM2 = np.array([np.real(scipy.sparse.linalg.eigs(np.dot(C.T,C), k=1, return_eigenvectors=False)[0]) for C in M2])
-
         prox_constraints = {
             " ": prox_id,    # do nothing
             "M": partial(prox_min, l=gradient_thresh), # positive gradients
             "S": prox_zero   # zero deviation of mirrored pixels
         }
-        prox_Cs = [prox_constraints[c] for c in constraints]
-        prox_S2 = partial(prox_components, prox_list=prox_Cs, axis=0)
+        M2 = []
+        # Expand the constraints if the user passed an abbreviated format and
+        # build the constraint operators and proximal operators
+        if algorithm=="ADMM":
+            if len(constraints)==1:
+                constraints = constraints*K
+            elif len(constraints)!=K:
+                raise ValueError("'constraints' in ADMM should either be a single constraint to"
+                                 "use on each peak, or a string of constraints, with an entry for each peak")
+            M2 = [get_constraints(constraints[pk], peak, (N, M),
+                                  monotonicUseNearest, nonSymmetricFill) for pk, peak in enumerate(peaks)]
+            lM2 = np.array([np.real(scipy.sparse.linalg.eigs(np.dot(C.T,C), k=1,
+                                    return_eigenvectors=False)[0]) for C in M2])
+            prox_S2 = partial(prox_components, prox_list=[prox_constraints[c] for c in constraints], axis=0)
+
+        if algorithm=="SDMM":
+            if isinstance(constraints, basestring):
+                constraints = [constraint*K for constraint in constraints]
+            elif all([len(constraint)==K for constraint in constraints]):
+                raise ValueError("'constraints' in SDMM must either be a string of constraints to apply to"
+                                 "each peak or a list of constraints for each peak")
+            M2 = []
+            lM2 = []
+            prox_S2 = []
+            for constraint in constraints:
+                M2.append([])
+                lM2.append([])
+                for pk, peak in enumerate(peaks):
+                    C = get_constraints(constraint[pk], peak, (N, M), monotonicUseNearest, nonSymmetricFill)
+                    M2[-1].append(C)
+                    lM2[-1].append(C.T.dot(C))
+                prox_S2.append(partial(prox_components, prox_list=[prox_constraints[c] for c in constraint], axis=0))
+            lM2 = np.sum(lM2, axis=0)
+            lM2 = np.array([np.real(scipy.sparse.linalg.eigs(l, k=1, return_eigenvectors=False)[0]) for l in lM2])
     else:
         prox_S2 = M2 = lM2 = None
 
     # run the NMF with those constraints
-    A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter, W=W_, P=P_, e_rel=e_rel)
+    A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2,
+              max_iter=max_iter, W=W_, P=P_, e_rel=e_rel, algorithm=algorithm)
 
     # reshape to have shape B,N,M
     model = np.dot(A,S)
