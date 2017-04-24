@@ -150,15 +150,18 @@ def APGM(X, prox, step, e_rel=1e-6, max_iter=1000):
 
     return it
 
-def check_NMF_convergence(it, newX, oldX, e_rel, K):
+def check_NMF_convergence(it, newX, oldX, e_rel, K, min_iter=10):
     """Check the that NMF converges
     
     Uses the check from Langville 2014, Section 5, to check if the NMF
     deblender has converged
     """
-    result = it > 10 and np.array([np.dot(newX[k], oldX[k]) > (1-e_rel**2)*l2sq(newX[k])
-                                   for k in range(K)]).all()
-    return result
+    norms = np.zeros((K, 2))
+    norms[:,0] = [newX[k].dot(oldX[k]) for k in range(K)]
+    norms[:,1] = [l2sq(oldX[k]) for k in range(K)]
+
+    convergent = it > min_iter and np.all([ct > (1-e_rel**2)*o2 for ct,o2 in norms])
+    return convergent, norms
 
 def get_variable_errors(A, AX, Z, U, e_rel):
     """Get the errors in a single multiplier method step
@@ -167,7 +170,7 @@ def get_variable_errors(A, AX, Z, U, e_rel):
     calculate the errors in the prime and dual variables, used by the
     Boyd 2011 Section 3 stopping criteria.
     """
-    e_pri2 = e_rel**2*max(l2sq(AX), l2sq(Z))
+    e_pri2 = e_rel**2*np.max([l2sq(AX), l2sq(Z), 1])
     if A is None:
         e_dual2 = e_rel**2*l2sq(U)
     else:
@@ -197,6 +200,7 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
         Z = dot_components(A, X)
         U = np.zeros_like(Z)
 
+    errors = []
     for it in range(max_iter):
         if A is None:
             X = prox_f(Z - U, step_f)
@@ -219,15 +223,19 @@ def ADMM(X0, prox_f, step_f, prox_g, step_g, A=None, max_iter=1000, e_rel=1e-3):
         # stopping criteria from Boyd+2011, sect. 3.3.1
         # only relative errors
         e_pri2, e_dual2 = get_variable_errors(A, AX, Z, U, e_rel)
+
+        # Store the errors
+        errors.append([[e_pri2, e_dual2, l2sq(R), l2sq(S)]])
+
         if l2sq(R) <= e_pri2 and l2sq(S) <= e_dual2:
             break
 
-    return it, X, Z, U
+    return it, X, Z, U, errors
 
 def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constraints):
     """Update the prime and dual variables for multiple linear constraints
     
-    Both SDMM and GLM require the same method of updating the prime and dual
+    Both SDMM and GLMM require the same method of updating the prime and dual
     variables for the intensity matrix linear constraints.
     
     """
@@ -236,15 +244,16 @@ def update_sdmm_variables(X, Y, Z, prox_f, step_f, proxOps, proxSteps, constrain
     X_ = prox_f(X - np.sum(linearization, axis=0), step=step_f)
     # Iterate over the different constraints
     CX = []
+    Y_ = Y.copy()
     for i in range(len(constraints)):
         # Apply the constraint for each peak to the peak intensities
         CXi = dot_components(constraints[i], X_)
         # TODO: the following is wrong!
         #CXi = dot_components(constraints[i], X)
-        Y[i] = proxOps[i](CXi+Z[i], step=proxSteps[i])
-        Z[i] = Z[i] + CXi - Y[i]
+        Y_[i] = proxOps[i](CXi+Z[i], step=proxSteps[i])
+        Z[i] = Z[i] + CXi - Y_[i]
         CX.append(CXi)
-    return X_ ,Y, Z, CX
+    return X_ ,Y_, Z, CX
 
 def test_multiple_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constraints, e_rel):
     """Calculate if all constraints have converged
@@ -257,11 +266,15 @@ def test_multiple_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constr
     S = [-(step_f/step_g[i]) * dot_components(c, Z_[i] - Z[i], transpose=True)
          for i, c in enumerate(constraints)]
     # Calculate the error for each constraint
-    errors = [get_variable_errors(c, CX[i], Z[i], U[i], e_rel) for i, c in enumerate(constraints)]
+    errors = np.zeros((len(constraints), 4))
+    errors[:,:2] = np.array([get_variable_errors(c, CX[i], Z[i], U[i], e_rel)
+                                for i, c in enumerate(constraints)])
+    errors[:,2] = [l2sq(r) for r in R]
+    errors[:,3] = [l2sq(s) for s in S]
+
     # Check the constraints for convergence
-    convergence = [l2sq(R[i])<= e_pri2 and l2sq(S[i])<= e_dual2
-                    for i, (e_pri2, e_dual2) in enumerate(errors)]
-    return np.all(convergence), convergence
+    convergence = [e[2]<=e[0] and e[3]<=e[1] for e in errors]
+    return np.all(convergence), errors
 
 def SDMM(X0, prox_f, step_f, prox_g, step_g, constraints, max_iter=1000, e_rel=1e-3):
     """Implement Simultaneous-Direction Method of Multipliers
@@ -293,22 +306,26 @@ def SDMM(X0, prox_f, step_f, prox_g, step_g, constraints, max_iter=1000, e_rel=1
         Z[c] = dot_components(C,X)
 
     # Update the constrained matrix
+    all_errors = []
     for n in range(max_iter):
         # Update the variables
         X_, Z_, U, CX = update_sdmm_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints)
-        # Check for convergence
-        convergence, c = test_multiple_constraint_convergence(step_f, step_g, X, CX, Z_, Z,
-                                                              U, constraints, e_rel)
+        # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
+        result = test_multiple_constraint_convergence(step_f, step_g, X, CX, Z_, Z,
+                                                      U, constraints, e_rel)
+
+        convergence, errors = result
+        all_errors.append(errors)
 
         X = X_
         Z = Z_
         if convergence:
             break
-    return n, X, Z, U
+    return n, X, Z, U, all_errors
 
-def GLM(data, X10, X20, W, P,
+def GLMM(data, X10, X20, W, P,
         prox_f1, prox_f2, prox_g1, prox_g2,
-        constraints1, constraints2, lM1, lM2, max_iter=1000, e_rel=1e-3, beta=1):
+        constraints1, constraints2, lM1, lM2, max_iter=1000, e_rel=1e-3, beta=1, min_iter=20):
     """ Solve for both the SED and Intensity Matrices at the same time
     """
     # Initialize SED matrix
@@ -335,6 +352,12 @@ def GLM(data, X10, X20, W, P,
 
     # Evaluate the solution
     logger.info("Beginning Loop")
+
+    all_norms = []
+    all_errors = []
+    # Used for Langville 2014 Frobenius norm
+    # Not currently implemented (see comment in loop)
+    #trData = np.trace(data.T.dot(data))
     for it in range(max_iter):
         # Step updates might need to be fixed, this is just a guess using the step updates from ALS
         step_f1 = beta**it / lipschitz_const(X2) / W_max
@@ -352,23 +375,43 @@ def GLM(data, X10, X20, W, P,
         prox_like_f2 = partial(prox_likelihood_S, A=X1, Y=data, prox_g=prox_f2, W=W, P=P)
         X2_, Z2_, U2, CX = update_sdmm_variables(X2, Z2, U2, prox_like_f2, step_f2, prox_g2, step_g2, constraints2)
 
-        ## Convergence crit from Langville 2014, section 5
-        #X2_converge = check_intensity_convergence(it, X2_, X2, e_rel, K)
-        X2_converge = check_NMF_convergence(it, X2_, X2, e_rel, K)
+        ## Convergence crit from Langville 2014, section 5 ?
+        NMF_converge, norms = check_NMF_convergence(it, X2_, X2, e_rel, K, min_iter)
+        all_norms.append(norms)
 
         # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, c = test_multiple_constraint_convergence(step_f2, step_g2, X2_, CX, Z2_, Z2,
-                                                              U2, constraints2, e_rel)
+        result = test_multiple_constraint_convergence(step_f2, step_g2, X2_, CX, Z2_, Z2,
+                                                      U2, constraints2, e_rel)
+        ADMM_converge, errors = result
+        all_errors.append(errors)
 
-        # For now just use the Langville 2014 convergence criteria
-        if X2_converge and convergence:
+        # Langville 2014 Section 5 uses the Frobenius norm, which is expensive to calculate
+        # I include it here in case we need it for testing later, but it is turned off
+        if False:
+            if P is not None:
+                model = np.empty(data.shape)
+                for b in range(data.shape[0]):
+                    model[b] = P[b].dot(np.dot(X2.T, X1[b]))
+            else:
+                model = X1.dot(X2)
+            frobenius = trData - 2*np.trace(model.T.dot(data))+np.trace(model.T.dot(model))
+            frobeniusNorm.append(frobenius)
+
+        # Check for both NMF and Primal and Dual variable convergence
+        if NMF_converge and ADMM_converge:
             X2 = X2_
             break
 
-        X2 = X2_
-        Z2 = Z2_
+        X2[:] = X2_[:]
+        Z2[:] = Z2_[:]
+    # Store the errors for convergence analysis
+    all_errors = [all_norms, all_errors]
+
+    # For testing purposes, allow us to probe the reason for non-convergence
+    if it+1 == max_iter:
+        logger.warning("Solution did not converge")
     logger.info("{0} iterations".format(it))
-    return X1, X2
+    return X1, X2, all_errors
 
 def lipschitz_const(M):
     return np.real(np.linalg.eigvals(np.dot(M, M.T)).max())
@@ -442,12 +485,10 @@ def getPeakSymmetryOp(shape, px, py, fillValue=0):
 
 def getOffsets(width, coords=None):
     """Get the offset and slices for a sparse band diagonal array
-
     For an operator that interacts with its neighbors we want a band diagonal matrix,
     where each row describes the 8 pixels that are neighbors for the reference pixel
     (the diagonal). Regardless of the operator, these 8 bands are always the same,
     so we make a utility function that returns the offsets (passed to scipy.sparse.diags).
-
     See `diagonalizeArray` for more on the slices and format of the array used to create
     NxN operators that act on a data vector.
     """
@@ -461,18 +502,14 @@ def getOffsets(width, coords=None):
 
 def diagonalizeArray(arr, shape=None, dtype=np.float64):
     """Convert an array to a matrix that compares each pixel to its neighbors
-
     Given an array with length N, create an 8xN array, where each row will be a
     diagonal in a diagonalized array. Each column in this matrix is a row in the larger
     NxN matrix used for an operator, except that this 2D array only contains the values
     used to create the bands in the band diagonal matrix.
-
     Because the off-diagonal bands have less than N elements, ``getOffsets`` is used to
     create a mask that will set the elements of the array that are outside of the matrix to zero.
-
     ``arr`` is the vector to diagonalize, for example the distance from each pixel to the peak,
     or the angle of the vector to the peak.
-
     ``shape`` is the shape of the original image.
     """
     if shape is None:
@@ -509,11 +546,9 @@ def diagonalizeArray(arr, shape=None, dtype=np.float64):
 
 def diagonalsToSparse(diagonals, shape, dtype=np.float64):
     """Convert a diagonalized array into a sparse diagonal matrix
-
     ``diagonalizeArray`` creates an 8xN array representing the bands that describe the
     interactions of a pixel with its neighbors. This function takes that 8xN array and converts
     it into a sparse diagonal matrix.
-
     See `diagonalizeArray` for the details of the 8xN array.
     """
     height, width = shape
@@ -535,7 +570,6 @@ def diagonalsToSparse(diagonals, shape, dtype=np.float64):
 
 def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=1):
     """Create an operator to constrain radial monotonicity
-
     This version of the radial monotonicity operator selects all of the pixels closer to the peak
     for each pixel and weights their flux based on their alignment with a vector from the pixel
     to the peak. In order to quickly create this using sparse matrices, its construction is a bit opaque.
@@ -611,11 +645,9 @@ def getRadialMonotonicOp(shape, px, py, useNearest=True, minGradient=1):
 
 def getPSFOp(psfImg, imgShape, threshold=1e-2):
     """Create an operator to convolve intensities with the PSF
-
     Given a psf image ``psfImg`` and the shape of the blended image ``imgShape``,
     make a banded matrix out of all the pixels in ``psfImg`` above ``threshold``
     that acts as the PSF operator.
-
     TODO: Optimize this algorithm to
     """
     height, width = imgShape
@@ -675,7 +707,8 @@ def getPSFOp(psfImg, imgShape, threshold=1e-2):
 
 
 def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
-        max_iter=1000, W=None, P=None, e_rel=1e-3, algorithm='ADMM'):
+        max_iter=1000, W=None, P=None, e_rel=1e-3, algorithm='ADMM',
+        outer_max_iter=50, min_iter=10):
 
     K = S0.shape[0]
     A = A0.copy()
@@ -688,7 +721,9 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
     else:
         W = W_max = 1
 
-    for it in range(max_iter):
+    all_errors = []
+    all_norms = []
+    for it in range(outer_max_iter):
         # A: simple gradient method; need to rebind S each time
         prox_like_A = partial(prox_likelihood_A, S=S, Y=Y, prox_g=prox_A, W=W, P=P)
         step_A = beta**it / lipschitz_const(S) / W_max
@@ -699,18 +734,19 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
         step_S = beta**it / lipschitz_const(A) / W_max
         if prox_S2 is None or algorithm == "APGM":
             it_S = APGM(S_, prox_like_S, step_S, max_iter=max_iter)
+            errors = []
         elif algorithm == "ADMM":
             # steps set to upper limit per component
             step_S2 = step_S * lM2
-            it_S, S_, _, _ = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2,
-                                  max_iter=max_iter, e_rel=e_rel)
+            it_S, S_, _, _, errors = ADMM(S_, prox_like_S, step_S, prox_S2, step_S2, A=M2,
+                                          max_iter=max_iter, e_rel=e_rel)
         elif algorithm == "SDMM":
             # TODO: Check that we are properly setting the step size.
             # Currently I am just using the same form as ADMM, with a slightly modified
             # lM2 in nmf_deblender
             step_S2 = step_S * lM2
-            it_S, S_, _, _ = SDMM(S_, prox_like_S, step_S, prox_S2, step_S2,
-                                  constraints=M2, max_iter=max_iter, e_rel=e_rel)
+            it_S, S_, _, _, errors = SDMM(S_, prox_like_S, step_S, prox_S2, step_S2,
+                                          constraints=M2, max_iter=max_iter, e_rel=e_rel)
         else:
             raise Exception("Unexpected 'algorithm' to be 'APGM', 'ADMM', or 'SDMM'")
 
@@ -720,15 +756,19 @@ def nmf(Y, A0, S0, prox_A, prox_S, prox_S2=None, M2=None, lM2=None,
         if it_A == 0 and it_S == 0:
             break
 
-        # Convergence crit from Langville 2014, section 5
-        if it > 10 and np.array([np.dot(S_[k],S[k]) > (1-e_rel**2)*l2sq(S[k]) for k in range(K)]).all():
+        ## Convergence crit from Langville 2014, section 5 ?
+        NMF_converge, norms = check_NMF_convergence(it, S_, S, e_rel, K, min_iter)
+        all_errors += errors
+        all_norms.append(norms)
+
+        # Store norms and errors
+
+        if NMF_converge:
             break
-        if it>12:
-            import IPython; IPython.embed()
 
         S[:,:] = S_[:,:]
     S[:,:] = S_[:,:]
-    return A,S
+    return A,S, [all_norms, all_errors]
 
 def init_A(B, K, peaks=None, I=None):
     # init A from SED of the peak pixels
@@ -782,7 +822,7 @@ def get_constraints(constraint, (px, py), (N, M), useNearest=True, fillValue=1):
 
 def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P=None, sky=None,
                   l0_thresh=None, l1_thresh=None, gradient_thresh=0, e_rel=1e-3, psf_thresh=1e-2,
-                  monotonicUseNearest=False, nonSymmetricFill=1, algorithm="ADMM"):
+                  monotonicUseNearest=False, nonSymmetricFill=1, algorithm="ADMM", outer_max_iter=50):
 
     # vectorize image cubes
     B,N,M = I.shape
@@ -841,7 +881,7 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
                                     return_eigenvectors=False)[0]) for C in M2])
             prox_S2 = partial(prox_components, prox_list=[prox_constraints[c] for c in constraints], axis=0)
 
-        elif algorithm=="SDMM" or algorithm=="GLM":
+        elif algorithm=="SDMM" or algorithm=="GLMM":
             if isinstance(constraints, basestring):
                 constraints = [constraint*K for constraint in constraints]
             elif all([len(constraint)==K for constraint in constraints]):
@@ -865,13 +905,15 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
 
     # run the NMF with those constraints
     if algorithm=="ADMM" or algorithm=="SDMM":
-        A,S = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2,
-                  max_iter=max_iter, W=W_, P=P_, e_rel=e_rel, algorithm=algorithm)
-    elif algorithm=="GLM":
+        A,S, errors = nmf(Y, A, S, prox_A, prox_S, prox_S2=prox_S2, M2=M2, lM2=lM2, max_iter=max_iter,
+                  W=W_, P=P_, e_rel=e_rel, algorithm=algorithm, outer_max_iter=outer_max_iter)
+        f = None
+    elif algorithm=="GLMM":
         # TODO: Improve this, the following is for testing purposes only
-        A, S = GLM(data=Y, X10=A, X20=S, W=W_, P=P_,
-                   prox_f1=prox_A, prox_f2=prox_S, prox_g1=None, prox_g2=prox_S2,
-                   constraints1=None, constraints2=M2, lM1=1, lM2=lM2, max_iter=max_iter, e_rel=e_rel, beta=1.0)
+        A, S, errors = GLMM(data=Y, X10=A, X20=S, W=W_, P=P_,
+                            prox_f1=prox_A, prox_f2=prox_S, prox_g1=None, prox_g2=prox_S2,
+                            constraints1=None, constraints2=M2, lM1=1, lM2=lM2, max_iter=max_iter,
+                            e_rel=e_rel, beta=1.0)
 
     # reshape to have shape B,N,M
     model = np.dot(A,S)
@@ -880,4 +922,4 @@ def nmf_deblender(I, K=1, max_iter=1000, peaks=None, constraints=None, W=None, P
     model = model.reshape(B,N,M)
     S = S.reshape(K,N,M)
 
-    return A,S,model,P_
+    return A,S,model,P_, errors
