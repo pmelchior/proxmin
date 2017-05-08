@@ -22,27 +22,18 @@ def apgm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     Z = X0.copy()
     t = 1.
     errors = []
-    #logger.debug("step_f: {0}".format(step_f))
-    #logger.debug("X0: \n{0}".format(X))
     for it in range(max_iter):
         _X = prox_f(X=Z, step=step_f)
-        #logger.debug("New X:\n{0}".format(_X))
-        #logger.debug("Diff X:\n{0}".format(X - _X))
         t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
         gamma = 1 + (t - 1)/t_
         Z = X + gamma*(_X - X)
         # test for fixed point convergence
         if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
-            #logger.debug("APGM X-_X {0}<= {1}*{2}".format(utils.l2sq(X - _X), e_rel**2, utils.l2sq(X)))
             X = _X
             break
 
         t = t_
         X = _X
-    #logger.debug("Iterations {0}".format(it))
-    #for x in range(4):
-    #    plt.plot(X[:,x])
-    #plt.show()
     return it, X, None, None, None
 
 def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
@@ -62,37 +53,15 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
 
     errors = []
     
-    #logger.debug("prox_g in ADMM: {0}".format(prox_g))
-    #logger.debug("step f: {0}, step g: {1}".format(step_f, step_g))
-    
     for it in range(max_iter):
-        #logger.debug(it)
         if A is None:
             X = prox_f(Z - U, step_f)
             AX = X
         else:
             x_update = X - (step_f/step_g)[:,None] * utils.get_linearization(A, X, Z, U, dot_components)
             X = prox_f(X=x_update, step=step_f)
-            #for k in range(len(X)):
-            #    plt.imshow(X[k].reshape(70, 103))
-            #plt.colorbar()
-            #plt.title("X")
-            #plt.show()
             AX = dot_components(A,X)
         _Z = prox_g(AX + U, step_g)
-        
-        #for k in range(len(X)):
-        #    plt.imshow(AX[k].reshape(70, 103))
-        #plt.colorbar()
-        #plt.title("AX")
-        #plt.show()
-        
-        #for k in range(len(X)):
-        #    plt.imshow(_Z[k].reshape(70, 103))
-        #plt.colorbar()
-        #plt.title("_Z")
-        #plt.show()
-        
         # this uses relaxation parameter of 1
         U = U + AX - _Z
 
@@ -101,7 +70,6 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
         if A is None:
             S = -(_Z - Z)
         else:
-            #logger.debug("max(_Z-Z): {0}".format(np.max(_Z-Z)))
             S = -(step_f/step_g)[:,None] * dot_components(A.T,_Z - Z)
         Z = _Z
 
@@ -111,18 +79,9 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
 
         # Store the errors
         errors.append([[e_pri2, e_dual2, utils.l2sq(R), utils.l2sq(S)]])
-        
-        #logger.debug("it: {0}, R: {1}, e_pri: {2}, S:{3}, e_dual: {4}".format(
-        #    it, utils.l2sq(R), e_pri2, utils.l2sq(S), e_dual2))
 
         if utils.l2sq(R) <= e_pri2 and utils.l2sq(S) <= e_dual2:
             break
-    #for k in range(len(X)):
-    #    plt.imshow(X[k].reshape(70, 103))
-    #plt.colorbar()
-    #plt.title("X")
-    #plt.show()
-    #logger.debug("errors: {0}".format(errors))
     return it, X, Z, U, errors
 
 def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
@@ -176,12 +135,7 @@ def update_steps(it, allXk, constraints, step_beta, wmax=1):
     """Calculate the Lipschitz constants to calculate the steps for each variable
     """
     lipschitz = [utils.lipschitz_const(Xk) for Xk in allXk]
-    #logger.debug("wmax: {0}".format(wmax))
-    #logger.debug("lipschitz: {0}".format(lipschitz))
-    #logger.debug("effective lipschitz: {0}".format([lipschitz[:n]+lipschitz[n+1:] for n in range(len(allXk))]))
-    # For each matrix, use the product of the other Lipschitz constants to determine it's step size
     steps = [step_beta**it/np.prod(lipschitz[:n]+lipschitz[n+1:])/wmax for n in range(len(allXk))]
-    #logger.debug("steps: {0}".format(steps))
     return steps
 
 def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
@@ -233,7 +187,6 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
     all_errors = []
     all_norms = []
     for it in range(als_max_iter):
-        #logger.debug("*"*20)
         f_steps = update_steps(it, allXk, constraints, step_beta, wmax)
         iterations = np.zeros(nbr_variables)
         _allXk = [Xk.copy() for Xk in allXk]
@@ -241,13 +194,9 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
         _allUk = []
         if all_step_g is None:
             g_steps = [f_steps[n]*all_constraint_norms[n] for n in range(len(f_steps))]
-            #logger.debug("f_steps: {0}".format(f_steps))
-            #logger.debug("all_constraint_norms: {0}".format(all_constraint_norms))
-            #logger.debug("g_steps: {0}".format(g_steps))
         else:
             g_steps = all_step_g
         for n,algorithm in enumerate(algorithms):
-            #logger.debug("{0}: {1}".format(n, algorithm))
             if algorithm is None:
                 raise Exception("Not yet implemented")
             else:
@@ -260,7 +209,6 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
                     from . import proximal
                     prox_g = proximal.prox_id
                 else:
-                    #logger.debug(all_prox_g[n])
                     prox_g = [partial(prox, allX=_allXk, **kwargs) for prox in all_prox_g[n]]
                 # Calculate Xk, Zk, Uk for the current step
                 if algorithm == "APGM":
@@ -287,7 +235,7 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
                 _allUk.append(_Uk)
         # If none of the variables required any iterations
         if np.all([n==0 for n in iterations]):
-            logger.debug("{0}: convergence: {1}, iterations: {2}".format(it, all_convergence, iterations))
+            logger.info("{0}: convergence: {1}, iterations: {2}".format(it, all_convergence, iterations))
             break
         # Optionally store the current state
         if traceback:
@@ -299,7 +247,7 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
             convergence, norms = check_convergence[n](it, _Xk, allXk[n], e_rel[n], min_iter)
             iter_norms.append(norms)
             all_convergence.append(convergence)
-        logger.debug("{0}: convergence: {1}, iterations: {2}".format(it, all_convergence, iterations))
+        logger.info("{0}: convergence: {1}, iterations: {2}".format(it, all_convergence, iterations))
         # Exit the loop if the convergence criteria has been meet
         if np.all(all_convergence):
             break
