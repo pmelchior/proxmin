@@ -112,16 +112,17 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     Z = np.zeros((len(constraints), N, M))
     U = np.zeros_like(Z)
     for c, C in enumerate(constraints):
-        Z[c] = C.dot(X)
+        Z[c] = dot_components[c](C, X)
 
     # Update the constrained matrix
     all_errors = []
     for n in range(max_iter):
         # Update the variables
-        _X, _Z, U, CX = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints)
+        _X, _Z, U, CX = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints,
+                                               dot_components)
         # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        result = utils.check_constraint_convergence(step_f, step_g, X, CX, _Z, Z,
-                                                            U, constraints, e_rel)
+        result = utils.check_constraint_convergence(step_f, step_g, X, CX, _Z, Z, U,
+                                                    constraints, e_rel, dot_components)
         convergence, errors = result
         all_errors.append(errors)
 
@@ -210,7 +211,13 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
                     prox_g = proximal.prox_id
                 else:
                     prox_g = [partial(prox, allX=_allXk, **kwargs) for prox in all_prox_g[n]]
-                # Calculate Xk, Zk, Uk for the current step
+                # It is possible to use a different product for each operator,
+                # but if a single component is specified, use it for all of the variables
+                if hasattr(dot_components, '__len__'):
+                    dci = dot_components[n]
+                else:
+                    dci = dot_components
+                # Setup the variables for the different algorithms
                 if algorithm == "APGM":
                     al = apgm
                     constraints = None
@@ -218,14 +225,14 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
                     al = admm
                     constraints = all_constraints[n][0]
                     prox_g = prox_g[0]
+                    if hasattr(dci, '__len__'):
+                        dci = dci[0]
                 if algorithm == "SDMM":
                     al = sdmm
-                    dci = dot_components[n]
                     constraints = all_constraints[n]
-                if hasattr(dot_components, '__len__'):
-                    dci = dot_components[n][0]
-                else:
-                    dci = dot_components
+                    if not hasattr(dci, "__len__"):
+                        dci = [dci]*len(constraints)
+                # Calculate Xk, Zk, Uk for the current step
                 result = al(X0=allXk[n], prox_f=prox_f, step_f=f_steps[n],
                             prox_g=prox_g, step_g=g_steps[n],
                             constraints=constraints, max_iter=max_iter, e_rel=e_rel[n],

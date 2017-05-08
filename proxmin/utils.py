@@ -29,21 +29,21 @@ def get_linearization(constraint, X, Z, U, dot_components):
     """
     return dot_components(constraint.T, dot_components(constraint,X) - Z + U)
 
-def update_variables(X, Z, U, prox_f, step_f, prog_g, step_g, constraints, dot_components):
+def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints, dot_components):
     """Update the primal and dual variables
     """
     # Lienarize each constraint
-    linearization = [step_f/step_g[i] * get_linearization(c, X, Z[i], U[i])
+    linearization = [step_f/step_g[i] * get_linearization(c, X, Z[i], U[i], dot_components[i])
                      for i, c in enumerate(constraints)]
     # Apply the proximal operator to update the variable X^k
     X_ = prox_f(X - np.sum(linearization, axis=0), step=step_f)
     # Iterate over the different constraints
     CX = []
-    U_ = Y.copy()
+    Z_ = Z.copy()
     for i in range(len(constraints)):
         # Apply the constraint for each peak to the peak intensities
         CXi = dot_components[i](constraints[i], X_)
-        Z_[i] = proxOps[i](CXi+U[i], step=step_g[i])
+        Z_[i] = prox_g[i](CXi+U[i], step=step_g[i])
         U[i] = U[i] + CXi - Z_[i]
         CX.append(CXi)
     return X_ ,Z_, U, CX
@@ -137,7 +137,7 @@ def unpack_convergence_norms(norms, axis=0):
     axis_norms[1,:] = np.sum(norms[3], axis=axis)
     return axis_norms
 
-def check_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constraints, e_rel):
+def check_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constraints, e_rel, dot_components):
     """Calculate if all constraints have converged
     
     Using the stopping criteria from Boyd 2011, Sec 3.3.1, calculate whether the
@@ -145,10 +145,10 @@ def check_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constraints, e
     """
     # compute prime residual rk and dual residual sk
     R = [cx-Z_[i] for i, cx in enumerate(CX)]
-    S = [-(step_f/step_g[i]) * c.T.dot(Z_[i] - Z[i]) for i, c in enumerate(constraints)]
+    S = [-(step_f/step_g[i]) * dot_components[i](c.T, Z_[i] - Z[i]) for i, c in enumerate(constraints)]
     # Calculate the error for each constraint
     errors = np.zeros((len(constraints), 4))
-    errors[:,:2] = np.array([get_variable_errors(c, CX[i], Z[i], U[i], e_rel)
+    errors[:,:2] = np.array([get_variable_errors(c, CX[i], Z[i], U[i], e_rel, dot_components[i])
                                 for i, c in enumerate(constraints)])
     errors[:,2] = [l2sq(r) for r in R]
     errors[:,3] = [l2sq(s) for s in S]
