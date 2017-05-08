@@ -206,7 +206,7 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
                 prox_f = partial(all_prox_f[n], allX=_allXk, **kwargs)
                 # TODO: This is a temporary fix that allows the code to run with no prox_g
                 # Remove and fix later
-                if all_prox_g[n] is None:
+                if all_constraints[n] is None:
                     from . import proximal
                     prox_g = proximal.prox_id
                 else:
@@ -269,15 +269,24 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
 
 def glmm(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
         e_rel=1e-3, step_beta=1., weights=1, all_step_g=None, all_constraint_norms=None,
-        traceback=False, convergence_func=None, **kwargs):
+        traceback=False, convergence_func=None, min_iter=10, dot_components=np.dot, **kwargs):
     """Use the Generalized Linearization Method of Multipliers
     """
     # Initialize the parameters
     nbr_variables = len(allX)
-    if weights == 1:
-        wmax = 1
+    if np.isscalar(weights):
+        wmax = weights
     else:
         wmax = weights.max()
+    if np.isscalar(e_rel):
+        e_rel = [e_rel]*len(allX)
+    # It is possible to use a different product for each operator,
+    # but if a single component is specified, use it for all of the variables
+    if hasattr(dot_components, '__len__'):
+        all_dot_components = dot_components
+    else:
+        all_dot_components = [None if constraints is None else [dot_components]*len(constraints)
+                                    for constraints in all_constraints]
 
     # Initialize the variables
     allXk = [X.copy() for X in allX]
@@ -286,7 +295,7 @@ def glmm(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
     allUk = []
     for n, X in enumerate(allXk):
         constraints = all_constraints[n]
-        if len(constraints)==0:
+        if constraints is None or len(constraints)==0:
             allZk.append(X.copy())
             allUk.append(np.zeros_like(X))
         else:
@@ -295,45 +304,63 @@ def glmm(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
             allUk.append(np.zeros_like(allZk[-1]))
 
     # Optionally keep track of the variable history
-    if traceback:
-        history = []
+    history = []
     # Main loop
     all_errors = []
     all_norms = []
-    for it in range(als_max_iter):
+    for it in range(max_iter):
+        # Set the steps for the f and g proximal operators
+        f_steps = update_steps(it, allXk, constraints, step_beta, wmax)
         if all_step_g is None:
-            steps = update_steps(it, allXk, constraints, step_beta, wmax)
+            g_steps = [f_steps[n]*all_constraint_norms[n] for n in range(len(f_steps))]
         else:
-            steps = all_step_g
+            g_steps = all_step_g
+        # Initialize the variables for the k+1 iteration
         iterations = np.zeros(nbr_variables)
-        _allXk = [X.copy() for x in allXk]
-        _allZk = [Z.copy() for Z in allZk]
-        all_CX = []
+        _allXk = [X.copy() for X in allXk]
+        _allZk = [None if Z is None else Z.copy() for Z in allZk]
+        allCX = []
         # Calculate _X{k+1} for all of the variables
         for n in range(nbr_variables):
+            #logger.debug("var {0} prox_g: {1}".format(n, all_prox_g[n]))
             _prox_f = partial(all_prox_f[n], allX=_allXk, **kwargs)
-            _prox_g = partial(all_prox_g[n], allX=_allXk, **kwargs)
-            result = update_variables(X, Z, U, _prox_f, steps[n], _prog_g, all_step_g[n], all_constraints[n])
-            _allXk[n], _allZk[n], allUk[n], CX = result
-            allCX.append(CX)
+            if all_constraints[n] is not None:
+                # Get the proximal operators for each constraint
+                _prox_g = [partial(prox, allX=_allXk, **kwargs) for prox in all_prox_g[n]]
+                result = utils.update_variables(allXk[n], allZk[n], allUk[n], _prox_f, f_steps[n],
+                                                _prox_g, g_steps[n], all_constraints[n],
+                                                all_dot_components[n])
+                _allXk[n], _allZk[n], allUk[n], CX = result
+                allCX.append(CX)
+            else:
+                # Use the simplified algorithm without a linear constraint
+                _allXk[n] = _prox_f(_allXk[n], f_steps[n])
+                _allZk[n] = None
+                allUk[n] = None
+                allCX.append(None)
+                #_allXk[n] = _prox_f(_allZk[n]-allUk[n], f_steps[n])
+                #_allZk[n] = _prox_g(_allXk[n]+allUk[n], f_steps[n])
+                #allUk[n] = allUk[n] + _allXk[n] - _allZk[n]
         # Optionally store the current state
         if traceback:
-            history.append([_allXk, _allZk, _allUk])
+            history.append([_allXk, _allZk, allUk])
         # Convergence crit from Langville 2014, section 5 ?
         iter_norms = []
         likelihood_convergence = []
         for n,Xk_ in enumerate(_allXk):
-            convergence, norms = utils.check_convergence(it, Xk_, allXk[n], e_rel, min_iter)
+            convergence, norms = utils.check_convergence(it, Xk_, allXk[n], e_rel[n], min_iter)
             iter_norms.append(norms)
             likelihood_convergence.append(convergence)
         # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        admm_convergence = []
+        admm_convergence = [True]*len(all_constraints)
         iter_errors = []
         for n, Xk_ in enumerate(_allXk):
-            result = utils.check_constraint_convergence(step_f2, step_g2, Xk_, allCX[n], _allZk[n],
-                                                        allZk[n],_allUk[n], constraints[n], e_rel)
-            admm_convergence[n], errors = result
-            iter_errors.append(errors)
+            if all_constraints[n] is not None:
+                result = utils.check_constraint_convergence(f_steps[n], g_steps[n], Xk_, allCX[n], _allZk[n],
+                                                            allZk[n],allUk[n], all_constraints[n], e_rel[n],
+                                                            all_dot_components[n])
+                admm_convergence[n], errors = result
+                iter_errors.append(errors)
 
         # Store the errors
         all_errors.append(iter_errors)
@@ -341,7 +368,7 @@ def glmm(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
 
         # Update all of the variables
         allXk = [X.copy() for X in _allXk]
-        allZk = [Z.copy() for Z in _allZk]
+        allZk = [None if Z is None else Z.copy() for Z in _allZk]
 
         # If the likelhoods and the dual and primal variables have converged, exit the loop
         if np.all(likelihood_convergence) and np.all(admm_convergence):
@@ -349,4 +376,4 @@ def glmm(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
     if it+1==max_iter:
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
-    return allX, [all_norms, all_errors], history
+    return allXk, [all_norms, all_errors], history
