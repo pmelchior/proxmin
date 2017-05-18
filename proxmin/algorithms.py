@@ -1,12 +1,7 @@
 from __future__ import print_function, division
 import logging
-from functools import partial
-
 import numpy as np
-
-#TODO: remove matplotlib dependencies
-import matplotlib
-import matplotlib.pyplot as plt
+from functools import partial
 
 from . import utils
 
@@ -15,7 +10,7 @@ logger = logging.getLogger("proxmin.algorithms")
 
 def apgm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000, **kwargs):
     """Accelerated Proximal Gradient Method
-    
+
     Adapted from Combettes 2009, Algorithm 3.6
     """
     X = X0.copy()
@@ -39,7 +34,7 @@ def apgm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
 def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
          dot_components=np.dot):
     """Alternating Direction Method of Multipliers
-    
+
     Adapted from Parikh and Boyd (2009).
     """
     if constraints is None:
@@ -52,7 +47,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
         U = np.zeros_like(Z)
 
     errors = []
-    
+
     for it in range(max_iter):
         if A is None:
             X = prox_f(Z - U, step_f)
@@ -87,10 +82,10 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
 def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
          dot_components=np.dot):
     """Implement Simultaneous-Direction Method of Multipliers
-    
+
     This implements the SDMM algorithm derived from Algorithm 7.9 from Combettes and Pesquet (2009),
     Section 4.4.2 in Parikh and Boyd (2013), and Eq. 2.2 in Andreani et al. (2007).
-    
+
     In Combettes and Pesquet (2009) they use a matrix inverse to solve the problem.
     In our case that is the inverse of a sparse matrix, which is no longer sparse and too
     costly to implement.
@@ -98,11 +93,11 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     using Algorithm 7.9 directly still does not yield the correct result,
     as the treatment of penalties due to constraints are on equal footing with our likelihood
     proximal operator and require a significant change in the way we calculate step sizes to converge.
-    
+
     Instead we calculate the constraint vectors (as in SDMM) but extend the update of the ``X`` matrix
     using a modified version of the ADMM X update function (from Parikh and Boyd, 2009),
     using an augmented Lagrangian for multiple linear constraints as given in Andreani et al. (2007).
-    
+
     In the language of Combettes and Pesquet (2009), constraints = list of Li,
     prox_g = list of ``prox_{gamma g i}``.
     """

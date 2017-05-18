@@ -1,6 +1,5 @@
 from __future__ import print_function, division
 import logging
-
 import numpy as np
 
 logging.basicConfig()
@@ -18,7 +17,7 @@ def prox_zero(X, step, **kwargs):
 
 def prox_hard(X, step, thresh=0, **kwargs):
     """Hard thresholding
-    
+
     X if X >= thresh, otherwise 0
     NOTE: modifies X in place
     """

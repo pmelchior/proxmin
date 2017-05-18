@@ -1,6 +1,5 @@
 from __future__ import print_function, division
 import logging
-
 import numpy as np
 
 logging.basicConfig()
@@ -24,7 +23,7 @@ def lipschitz_const(X):
 
 def get_linearization(constraint, X, Z, U, dot_components):
     """Linearize the constraint on X
-    
+
     Z is the primal variable, U is the dual variable
     """
     return dot_components(constraint.T, dot_components(constraint,X) - Z + U)
@@ -50,7 +49,7 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints, dot_c
 
 def get_variable_errors(A, AX, Z, U, e_rel, dot_components):
     """Get the errors in a single multiplier method step
-    
+
     For a given linear operator A, (and its dot product with X to save time),
     calculate the errors in the prime and dual variables, used by the
     Boyd 2011 Section 3 stopping criteria.
@@ -64,7 +63,7 @@ def get_variable_errors(A, AX, Z, U, e_rel, dot_components):
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
     """Check that the algorithm converges using Langville 2014 criteria
-    
+
     Uses the check from Langville 2014, Section 5, to check if the NMF
     algorithm has converged.
     """
@@ -81,7 +80,7 @@ def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwarg
 
 def check_column_convergence(it, newX, oldX, e_rel, min_iter=10, **kwargs):
     """Check that the columns of the algorithm converge
-    
+
     Uses the check from Langville 2014, Section 5, to check if the NMF
     algorithm has converged.
     """
@@ -95,7 +94,7 @@ def check_column_convergence(it, newX, oldX, e_rel, min_iter=10, **kwargs):
 
 def check_row_convergence(it, newX, oldX, e_rel, min_iter=10, **kwargs):
     """Check that the rows of the algorithm converge
-    
+
     Uses the check from Langville 2014, Section 5, to check if the NMF
     algorithm has converged.
     """
@@ -109,7 +108,7 @@ def check_row_convergence(it, newX, oldX, e_rel, min_iter=10, **kwargs):
 
 def check_diff_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
     """Check that the algorithm converges using the difference
-    
+
     Uses the differences between X and the old and new step to check for convergence.
     """
     # Calculate the norm for columns and rows, which can be used for debugging
@@ -125,7 +124,7 @@ def check_diff_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **
 
 def unpack_convergence_norms(norms, axis=0):
     """Unpack the convergence norms for a given axis
-    
+
     In most schemes, for example NMF, either the rows or columns of a matrix represent
     a given feature, so this allows the user to extract the parameters used to
     calculate convergence.
@@ -139,7 +138,7 @@ def unpack_convergence_norms(norms, axis=0):
 
 def check_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constraints, e_rel, dot_components):
     """Calculate if all constraints have converged
-    
+
     Using the stopping criteria from Boyd 2011, Sec 3.3.1, calculate whether the
     variables for each constraint have converged.
     """
