@@ -12,7 +12,7 @@ setup(
   name = 'proxmin',
   packages = packages,
   version = '0.0',
-  long_description = 'Implementation of the General Linearization Method of Multipliers to solve minimization problems with multiple constraints and variables',
+  long_description = 'General Linearized Method of Multipliers for constrained optimization',
   author = 'Fred Moolekamp and Peter Melchior',
   author_email = 'fred.moolekamp@gmail.com',
   url = 'https://github.com/fred3m/proxmin',
