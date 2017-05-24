@@ -8,6 +8,29 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin.algorithms")
 
+def pgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, **kwargs):
+    """Proximal Gradient Method
+
+    Adapted from Combettes 2009, Algorithm 3.4
+    """
+    X = X0.copy()
+    Z = X0.copy()
+
+    # TODO: make all necessary keywords explicit
+    relax = kwargs.get("relax", 1.49)
+
+    for it in range(max_iter):
+        _X = prox_f(Z, step_f)
+        Z = X + relax*(_X - X)
+        # test for fixed point convergence
+        if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
+            X = _X
+            break
+
+        X = _X
+    return it, X, None, None, None
+
+
 def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1e-6, max_iter=1000, **kwargs):
     """Accelerated Proximal Gradient Method
 
