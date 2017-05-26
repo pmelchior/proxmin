@@ -8,7 +8,7 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin.algorithms")
 
-def apgm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000, **kwargs):
+def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1e-6, max_iter=1000, **kwargs):
     """Accelerated Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.6
@@ -16,9 +16,8 @@ def apgm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     X = X0.copy()
     Z = X0.copy()
     t = 1.
-    errors = []
     for it in range(max_iter):
-        _X = prox_f(X=Z, step=step_f)
+        _X = prox_f(Z, step_f)
         t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
         gamma = 1 + (t - 1)/t_
         Z = X + gamma*(_X - X)

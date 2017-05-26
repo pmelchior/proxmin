@@ -37,6 +37,13 @@ def prox_min(X, step, thresh=0, **kwargs):
     X[below] = thresh*step
     return X
 
+def prox_max(X, step, thresh=0, **kwargs):
+    """Projection onto numbers below `thresh`
+    """
+    above = X - thresh*step > 0
+    X[above] = thresh*step
+    return X
+
 def prox_soft(X, step, thresh=0, **kwargs):
     """Soft thresholding proximal operator
     """
