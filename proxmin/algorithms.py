@@ -407,7 +407,7 @@ def glmm(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
         allZk = [None if Z is None else Z.copy() for Z in _allZk]
 
         # If the likelhoods and the dual and primal variables have converged, exit the loop
-        if np.all(likelihood_convergence) and np.all(admm_convergence):
+        if np.all(likelihood_convergence) and np.all(admm_convergence) and it>min_iter:
             break
     if it+1==max_iter:
         logger.warning("Solution did not converge")
