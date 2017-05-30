@@ -8,7 +8,7 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin.algorithms")
 
-def pgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, **kwargs):
+def pgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False, **kwargs):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4
@@ -19,7 +19,13 @@ def pgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, **kwargs):
     # TODO: make all necessary keywords explicit
     relax = kwargs.get("relax", 1.49)
 
+    history = []
     for it in range(max_iter):
+
+        # Optionally store the current state
+        if traceback:
+            history.append(X)
+
         _X = prox_f(Z, step_f)
         Z = X + relax*(_X - X)
         # test for fixed point convergence
@@ -28,10 +34,10 @@ def pgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, **kwargs):
             break
 
         X = _X
-    return it, X, None, None, None
+    return it, X, None, None, None, history
 
 
-def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1e-6, max_iter=1000, **kwargs):
+def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1e-6, max_iter=1000, traceback=False, **kwargs):
     """Accelerated Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.6
@@ -39,7 +45,13 @@ def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1
     X = X0.copy()
     Z = X0.copy()
     t = 1.
+    history = []
     for it in range(max_iter):
+
+        # Optionally store the current state
+        if traceback:
+            history.append(X)
+
         _X = prox_f(Z, step_f)
         t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
         gamma = 1 + (t - 1)/t_
@@ -51,17 +63,19 @@ def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1
 
         t = t_
         X = _X
-    return it, X, None, None, None
+    return it, X, None, None, None, history
 
 def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
-         dot_components=np.dot):
+         traceback=False, dot_components=np.dot):
     """Alternating Direction Method of Multipliers
 
     Adapted from Parikh and Boyd (2009).
     """
     if constraints is None:
-        U = np.zeros_like(X0)
+        A = None
+        X = X0.copy()
         Z = X0.copy()
+        U = np.zeros_like(X0)
     else:
         A = constraints
         X = X0.copy()
@@ -69,8 +83,13 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
         U = np.zeros_like(Z)
 
     errors = []
-
+    history = []
     for it in range(max_iter):
+
+        # Optionally store the current state
+        if traceback:
+            history.append(X)
+
         if A is None:
             X = prox_f(Z - U, step_f)
             AX = X
@@ -99,7 +118,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
 
         if utils.l2sq(R) <= e_pri2 and utils.l2sq(S) <= e_dual2:
             break
-    return it, X, Z, U, errors
+    return it, X, Z, U, errors, history
 
 def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
          dot_components=np.dot):
