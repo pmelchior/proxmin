@@ -121,7 +121,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     return it, X, Z, U, errors, history
 
 def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
-         dot_components=np.dot):
+        traceback=False, dot_components=np.dot):
     """Implement Simultaneous-Direction Method of Multipliers
 
     This implements the SDMM algorithm derived from Algorithm 7.9 from Combettes and Pesquet (2009),
@@ -152,7 +152,12 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
 
     # Update the constrained matrix
     all_errors = []
-    for n in range(max_iter):
+    history = []
+    for it in range(max_iter):
+        # Optionally store the current state
+        if traceback:
+            history.append(X)
+
         # Update the variables
         _X, _Z, U, CX = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints,
                                                dot_components)
@@ -166,7 +171,7 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
         Z = _Z
         if convergence:
             break
-    return n, X, Z, U, all_errors
+    return it, X, Z, U, all_errors, history
 
 def update_steps(it, allXk, constraints, step_beta, wmax=1):
     """Calculate the Lipschitz constants to calculate the steps for each variable
