@@ -144,11 +144,15 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     """
     # Initialization
     X = X0.copy()
-    N,M = X0.shape
-    Z = np.zeros((len(constraints), N, M))
+    if constraints is None:
+        shape = (1,) + X0.shape
+        Z = X0.copy().reshape(shape)
+    else:
+        shape = (len(constraints),) + X0.shape
+        Z = np.empty((len(constraints), N, M))
+        for c, C in enumerate(constraints):
+            Z[c] = dot_components[c](C, X)
     U = np.zeros_like(Z)
-    for c, C in enumerate(constraints):
-        Z[c] = dot_components[c](C, X)
 
     # Update the constrained matrix
     all_errors = []
