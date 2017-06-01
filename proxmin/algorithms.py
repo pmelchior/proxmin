@@ -125,14 +125,20 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
         e_pri2, e_dual2 = utils.get_variable_errors(L, LX, Z, U, e_rel)
 
         # Store the errors
-        errors.append([[e_pri2, e_dual2, utils.l2sq(R), utils.l2sq(S)]])
+        if traceback:
+            errors.append([[e_pri2, e_dual2, utils.l2sq(R), utils.l2sq(S)]])
 
         if utils.l2sq(R) <= e_pri2 and utils.l2sq(S) <= e_dual2:
             break
 
     # undo matrix adaptor
     L = L.L
-    return it, X, Z, U, errors, history
+
+    if not traceback:
+        return X
+    else:
+        tr = utils.Traceback(it=it, Z=Z, U=U, errors=errors, history=history)
+        return X, tr
 
 def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
         traceback=False, dot_components=np.dot):

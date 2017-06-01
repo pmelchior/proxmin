@@ -22,6 +22,21 @@ class MatrixOrNone(object):
             return X
         return self.L.dot(X)
 
+class Traceback(object):
+    """Container structure for traceback of algorithm behavior.
+    """
+    def __init__(self, it=None, Z=None, U=None, errors=None, history=None):
+        self.it = it
+        self.Z = Z
+        self.U = U
+        self.errors = errors
+        self.history = history
+
+    def __repr__(self):
+        message = "Traceback:\n"
+        for k,v in self.__dict__.iteritems():
+            message += "\t%s: %r\n" % (k,v)
+        return message
 
 def l2sq(x):
     """Sum the matrix elements squared
