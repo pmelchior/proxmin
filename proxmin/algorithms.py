@@ -65,22 +65,39 @@ def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1
         X = _X
     return it, X, None, None, None, history
 
-def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
+def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
          traceback=False, dot_components=np.dot):
     """Alternating Direction Method of Multipliers
 
     Adapted from Parikh and Boyd (2009).
     """
-    if constraints is None:
-        A = None
-        X = X0.copy()
-        Z = X0.copy()
-        U = np.zeros_like(X0)
-    else:
-        A = constraints
-        X = X0.copy()
-        Z = dot_components(A, X)
-        U = np.zeros_like(Z)
+
+    # deal with possible None defaults for step_g and L
+    dot_components_ = partial(utils.dot_components_none, dot_components=dot_components)
+    if L is None: # regular ADMM
+        step_g = step_f
+
+    else: # linearized ADMM
+        LTL = np.dot(L.T, L)
+        # need spectral norm of L
+        import scipy.sparse
+        if scipy.sparse.issparse(L):
+            if min(L.shape) <= 2:
+                L2 = np.linalg.eigvals(LTL.toarray())
+            else:
+                import scipy.sparse.linalg
+                L2 = np.real(scipy.sparse.linalg.eigs(np.dot(L.T,L), k=1, return_eigenvectors=False)[0])
+        else:
+            L2 = np.linalg.eigvals(LTL).max()
+
+        if step_g is None:
+            step_g = step_f * L2
+        else:
+            assert step_f <= step_g / L2
+
+    X = X0.copy()
+    Z = dot_components_(L, X)
+    U = np.zeros_like(Z)
 
     errors = []
     history = []
@@ -90,28 +107,20 @@ def admm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
         if traceback:
             history.append(X)
 
-        if A is None:
-            X = prox_f(Z - U, step_f)
-            AX = X
-        else:
-            x_update = X - (step_f/step_g)[:,None] * utils.get_linearization(A, X, Z, U, dot_components)
-            X = prox_f(X=x_update, step=step_f)
-            AX = dot_components(A,X)
-        _Z = prox_g(AX + U, step_g)
+        X = prox_f(X - step_f/step_g * utils.get_linearization(L, X, Z, U, dot_components_), step_f)
+        LX = dot_components_(L, X)
+        Z_ = prox_g(LX + U, step_g)
         # this uses relaxation parameter of 1
-        U = U + AX - _Z
+        U = U + LX - Z_
 
         # compute prime residual rk and dual residual sk
-        R = AX - _Z
-        if A is None:
-            S = -(_Z - Z)
-        else:
-            S = -(step_f/step_g)[:,None] * dot_components(A.T,_Z - Z)
-        Z = _Z
+        R = LX - Z_
+        S = -(step_f/step_g) * dot_components_(L, Z_ - Z, transposeL=True)
+        Z = Z_
 
         # stopping criteria from Boyd+2011, sect. 3.3.1
         # only relative errors
-        e_pri2, e_dual2 = utils.get_variable_errors(A, AX, Z, U, e_rel, dot_components)
+        e_pri2, e_dual2 = utils.get_variable_errors(L, LX, Z, U, e_rel, dot_components_)
 
         # Store the errors
         errors.append([[e_pri2, e_dual2, utils.l2sq(R), utils.l2sq(S)]])
@@ -142,16 +151,30 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     In the language of Combettes and Pesquet (2009), constraints = list of Li,
     prox_g = list of ``prox_{gamma g i}``.
     """
+    if not hasattr(prox_g, "__iter__"):
+        prox_g = [prox_g]
+    if not hasattr(step_g, "__iter__"):
+        step_g = [step_g]
+    if not hasattr(constraints, "__iter__"):
+        constraints = [constraints]
+    for i in range(len(step_g)):
+        if constraints[i] is None:
+            step_g[i] = step_f
+        else:
+            import scipy
+            step_g = step_f * scipy.sparse.linalg.norm(constraint)
+        step_g[i] = step_g[i] or step_f
+    assert len(prox_g) == len(step_g)
+    assert len(prox_g) == len(constraints)
+
+    dot_components_ = partial(utils.dot_components_none, dot_components=dot_components)
+
     # Initialization
     X = X0.copy()
-    if constraints is None:
-        shape = (1,) + X0.shape
-        Z = X0.copy().reshape(shape)
-    else:
-        shape = (len(constraints),) + X0.shape
-        Z = np.empty((len(constraints), N, M))
-        for c, C in enumerate(constraints):
-            Z[c] = dot_components[c](C, X)
+    shape = (len(prox_g),) + X0.shape
+    Z = np.empty(shape)
+    for i in range(len(prox_g)):
+        Z[i] = dot_components_(constraints[i], X)
     U = np.zeros_like(Z)
 
     # Update the constrained matrix
@@ -164,10 +187,10 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
 
         # Update the variables
         _X, _Z, U, CX = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints,
-                                               dot_components)
+                                               dot_components_)
         # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
         result = utils.check_constraint_convergence(step_f, step_g, X, CX, _Z, Z, U,
-                                                    constraints, e_rel, dot_components)
+                                                    constraints, e_rel, dot_components_)
         convergence, errors = result
         all_errors.append(errors)
 

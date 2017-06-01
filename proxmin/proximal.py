@@ -28,7 +28,7 @@ def prox_hard(X, step, thresh=0, **kwargs):
 def prox_plus(X, step, **kwargs):
     """Projection onto non-negative numbers
     """
-    return prox_hard(X, step, l=0)
+    return prox_hard(X, step, **kwargs)
 
 def prox_min(X, step, thresh=0, **kwargs):
     """Projection onto numbers above `thresh`

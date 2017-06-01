@@ -5,6 +5,12 @@ import numpy as np
 logging.basicConfig()
 logger = logging.getLogger("proxmin.utils")
 
+def dot_components_none(L, X, dot_components=np.dot, transposeL=False):
+    if L is None:
+        return X
+    if not transposeL:
+        return dot_components(L,X)
+    return dot_components(L.T,X)
 
 def l2sq(x):
     """Sum the matrix elements squared
@@ -26,25 +32,24 @@ def get_linearization(constraint, X, Z, U, dot_components):
 
     Z is the primal variable, U is the dual variable
     """
-    return dot_components(constraint.T, dot_components(constraint,X) - Z + U)
+    return dot_components(constraint, dot_components(constraint,X) - Z + U, transposeL=True)
 
 def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints, dot_components):
     """Update the primal and dual variables
     """
-    # Lienarize each constraint
-    linearization = [step_f/step_g[i] * get_linearization(c, X, Z[i], U[i], dot_components[i])
-                     for i, c in enumerate(constraints)]
+    # Linearize each constraint
+    linearization = [step_f/step_g[i] * get_linearization(constraints[i], X, Z[i], U[i], dot_components) for i in range(len(prox_g))]
     # Apply the proximal operator to update the variable X^k
     X_ = prox_f(X - np.sum(linearization, axis=0), step=step_f)
     # Iterate over the different constraints
     CX = []
-    Z_ = Z.copy()
-    for i in range(len(constraints)):
-        # Apply the constraint for each peak to the peak intensities
-        CXi = dot_components[i](constraints[i], X_)
-        Z_[i] = prox_g[i](CXi+U[i], step=step_g[i])
+    Z_ = np.empty(Z.shape)
+    for i in range(len(prox_g)):
+        CXi = dot_components(constraints[i], X_)
+        Z_[i] = prox_g[i](CXi + U[i], step_g[i])
         U[i] = U[i] + CXi - Z_[i]
         CX.append(CXi)
+    print (X_, Z_, U)
     return X_ ,Z_, U, CX
 
 def get_variable_errors(A, AX, Z, U, e_rel, dot_components):
@@ -58,7 +63,7 @@ def get_variable_errors(A, AX, Z, U, e_rel, dot_components):
     if A is None:
         e_dual2 = e_rel**2*l2sq(U)
     else:
-        e_dual2 = e_rel**2*l2sq(dot_components(A.T,U))
+        e_dual2 = e_rel**2*l2sq(dot_components(A,U, transposeL=True))
     return e_pri2, e_dual2
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
@@ -144,11 +149,10 @@ def check_constraint_convergence(step_f, step_g, X, CX, Z_, Z, U, constraints, e
     """
     # compute prime residual rk and dual residual sk
     R = [cx-Z_[i] for i, cx in enumerate(CX)]
-    S = [-(step_f/step_g[i]) * dot_components[i](c.T, Z_[i] - Z[i]) for i, c in enumerate(constraints)]
+    S = [-(step_f/step_g[i]) * dot_components(c, Z_[i] - Z[i], transposeL=True) for i, c in enumerate(constraints)]
     # Calculate the error for each constraint
     errors = np.zeros((len(constraints), 4))
-    errors[:,:2] = np.array([get_variable_errors(c, CX[i], Z[i], U[i], e_rel, dot_components[i])
-                                for i, c in enumerate(constraints)])
+    errors[:,:2] = np.array([get_variable_errors(c, CX[i], Z[i], U[i], e_rel, dot_components) for i, c in enumerate(constraints)])
     errors[:,2] = [l2sq(r) for r in R]
     errors[:,3] = [l2sq(s) for s in S]
 
