@@ -66,19 +66,18 @@ def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1
     return it, X, None, None, None, history
 
 def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
-         traceback=False, dot_components=np.dot):
+         traceback=False):
+
     """Alternating Direction Method of Multipliers
 
     Adapted from Parikh and Boyd (2009).
     """
 
-    # deal with possible None defaults for step_g and L
-    dot_components_ = partial(utils.dot_components_none, dot_components=dot_components)
     if L is None: # regular ADMM
         step_g = step_f
 
     else: # linearized ADMM
-        LTL = np.dot(L.T, L)
+        LTL = L.T.dot(L)
         # need spectral norm of L
         import scipy.sparse
         if scipy.sparse.issparse(L):
@@ -86,7 +85,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
                 L2 = np.linalg.eigvals(LTL.toarray())
             else:
                 import scipy.sparse.linalg
-                L2 = np.real(scipy.sparse.linalg.eigs(np.dot(L.T,L), k=1, return_eigenvectors=False)[0])
+                L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
         else:
             L2 = np.linalg.eigvals(LTL).max()
 
@@ -95,8 +94,11 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
         else:
             assert step_f <= step_g / L2
 
+    # use matrix adaptor for convenient & fast notation
+    L = utils.MatrixOrNone(L)
+
     X = X0.copy()
-    Z = dot_components_(L, X)
+    Z = L.dot(X)
     U = np.zeros_like(Z)
 
     errors = []
@@ -107,30 +109,34 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
         if traceback:
             history.append(X)
 
-        X = prox_f(X - step_f/step_g * utils.get_linearization(L, X, Z, U, dot_components_), step_f)
-        LX = dot_components_(L, X)
+        X = prox_f(X - step_f/step_g * L.T.dot(L.dot(X) - Z + U), step_f)
+        LX = L.dot(X)
         Z_ = prox_g(LX + U, step_g)
         # this uses relaxation parameter of 1
         U = U + LX - Z_
 
         # compute prime residual rk and dual residual sk
         R = LX - Z_
-        S = -(step_f/step_g) * dot_components_(L, Z_ - Z, transposeL=True)
+        S = -step_f/step_g * L.T.dot(Z_ - Z)
         Z = Z_
 
         # stopping criteria from Boyd+2011, sect. 3.3.1
         # only relative errors
-        e_pri2, e_dual2 = utils.get_variable_errors(L, LX, Z, U, e_rel, dot_components_)
+        e_pri2, e_dual2 = utils.get_variable_errors(L, LX, Z, U, e_rel)
 
         # Store the errors
         errors.append([[e_pri2, e_dual2, utils.l2sq(R), utils.l2sq(S)]])
 
         if utils.l2sq(R) <= e_pri2 and utils.l2sq(S) <= e_dual2:
             break
+
+    # undo matrix adaptor
+    L = L.L
     return it, X, Z, U, errors, history
 
 def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
         traceback=False, dot_components=np.dot):
+
     """Implement Simultaneous-Direction Method of Multipliers
 
     This implements the SDMM algorithm derived from Algorithm 7.9 from Combettes and Pesquet (2009),

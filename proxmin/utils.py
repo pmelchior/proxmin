@@ -5,12 +5,23 @@ import numpy as np
 logging.basicConfig()
 logger = logging.getLogger("proxmin.utils")
 
-def dot_components_none(L, X, dot_components=np.dot, transposeL=False):
-    if L is None:
-        return X
-    if not transposeL:
-        return dot_components(L,X)
-    return dot_components(L.T,X)
+class MatrixOrNone(object):
+    """Matrix adapter to deal with the absence of a matrix.
+    """
+    def __init__(self, L):
+        self.L = L
+
+    @property
+    def T(self):
+        if self.L is None:
+            return self # NOT: self.L !!!
+        return self.L.T
+
+    def dot(self, X):
+        if self.L is None:
+            return X
+        return self.L.dot(X)
+
 
 def l2sq(x):
     """Sum the matrix elements squared
@@ -27,12 +38,6 @@ def lipschitz_const(X):
     """
     return np.real(np.linalg.eigvals(X.dot(X.T)).max())
 
-def get_linearization(constraint, X, Z, U, dot_components):
-    """Linearize the constraint on X
-
-    Z is the primal variable, U is the dual variable
-    """
-    return dot_components(constraint, dot_components(constraint,X) - Z + U, transposeL=True)
 
 def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints, dot_components):
     """Update the primal and dual variables
@@ -52,18 +57,15 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints, dot_c
     print (X_, Z_, U)
     return X_ ,Z_, U, CX
 
-def get_variable_errors(A, AX, Z, U, e_rel, dot_components):
+def get_variable_errors(L, LX, Z, U, e_rel):
     """Get the errors in a single multiplier method step
 
     For a given linear operator A, (and its dot product with X to save time),
     calculate the errors in the prime and dual variables, used by the
     Boyd 2011 Section 3 stopping criteria.
     """
-    e_pri2 = e_rel**2*np.max([l2sq(AX), l2sq(Z), 1])
-    if A is None:
-        e_dual2 = e_rel**2*l2sq(U)
-    else:
-        e_dual2 = e_rel**2*l2sq(dot_components(A,U, transposeL=True))
+    e_pri2 = e_rel**2*np.max([l2sq(LX), l2sq(Z), 1])
+    e_dual2 = e_rel**2*l2sq(L.T.dot(U))
     return e_pri2, e_dual2
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
