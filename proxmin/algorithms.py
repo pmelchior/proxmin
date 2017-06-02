@@ -8,16 +8,13 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin.algorithms")
 
-def pgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False, **kwargs):
+def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=False):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4
     """
     X = X0.copy()
     Z = X0.copy()
-
-    # TODO: make all necessary keywords explicit
-    relax = kwargs.get("relax", 1.49)
 
     history = []
     for it in range(max_iter):
@@ -34,10 +31,19 @@ def pgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False, **kwargs
             break
 
         X = _X
-    return it, X, None, None, None, history
+
+    if it+1 == max_iter:
+        logger.warning("Solution did not converge")
+    logger.info("Completed {0} iterations".format(it+1))
+
+    if not traceback:
+        return X
+    else:
+        tr = utils.Traceback(it=it, history=history)
+        return X, tr
 
 
-def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1e-6, max_iter=1000, traceback=False, **kwargs):
+def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
     """Accelerated Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.6
@@ -63,7 +69,17 @@ def apgm(X0, prox_f, step_f, prox_g=None, step_g=None, constraints=None, e_rel=1
 
         t = t_
         X = _X
-    return it, X, None, None, None, history
+
+    if it+1 == max_iter:
+        logger.warning("Solution did not converge")
+    logger.info("Completed {0} iterations".format(it+1))
+
+    if not traceback:
+        return X
+    else:
+        tr = utils.Traceback(it=it, history=history)
+        return X, tr
+
 
 def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
          traceback=False):
@@ -134,11 +150,16 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
     # undo matrix adaptor
     L = L.L
 
+    if it+1 == max_iter:
+        logger.warning("Solution did not converge")
+    logger.info("Completed {0} iterations".format(it+1))
+
     if not traceback:
         return X
     else:
         tr = utils.Traceback(it=it, Z=Z, U=U, errors=errors, history=history)
         return X, tr
+
 
 def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
         traceback=False, dot_components=np.dot):
