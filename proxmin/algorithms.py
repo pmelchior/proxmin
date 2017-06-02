@@ -106,26 +106,17 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
         if traceback:
             history.append(X)
 
-        X = prox_f(X - step_f/step_g * L.T.dot(L.dot(X) - Z + U), step_f)
-        LX = L.dot(X)
-        Z_ = prox_g(LX + U, step_g)
-        # this uses relaxation parameter of 1
-        U = U + LX - Z_
-
-        # compute prime residual rk and dual residual sk
-        R = LX - Z_
-        S = -step_f/step_g * L.T.dot(Z_ - Z)
+        # Update the variables
+        X, Z_, U, LX = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L)
+        # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
+        convergence, error = utils.check_constraint_convergence(step_f, step_g, X, LX, Z_, Z, U, L, e_rel)
         Z = Z_
-
-        # stopping criteria from Boyd+2011, sect. 3.3.1
-        # only relative errors
-        e_pri2, e_dual2 = utils.get_variable_errors(L, LX, Z, U, e_rel)
 
         # Store the errors
         if traceback:
-            errors.append([[e_pri2, e_dual2, utils.l2sq(R), utils.l2sq(S)]])
+            errors.append(error)
 
-        if utils.l2sq(R) <= e_pri2 and utils.l2sq(S) <= e_dual2:
+        if convergence:
             break
 
     # undo matrix adaptor
@@ -142,8 +133,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=1000,
-        traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Implement Simultaneous-Direction Method of Multipliers
 
@@ -169,75 +159,57 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
         steps_g = [steps_g]
     if not hasattr(Ls, "__iter__"):
         Ls = [Ls]
+    M = len(proxs_g)
+    assert len(steps_g) == M
+    assert len(Ls) == M
 
-    if L is None: # regular ADMM
-        step_g = step_f
-
-    else: # linearized ADMM
-        LTL = L.T.dot(L)
-        # need spectral norm of L
-        import scipy.sparse
-        if scipy.sparse.issparse(L):
-            if min(L.shape) <= 2:
-                L2 = np.linalg.eigvals(LTL.toarray())
-            else:
-                import scipy.sparse.linalg
-                L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
-        else:
-            L2 = np.linalg.eigvals(LTL).max()
-
-        if step_g is None:
-            step_g = step_f * L2
-        else:
-            assert step_f <= step_g / L2
-
+    # get/check compatible step sizes for g
     # use matrix adaptor for convenient & fast notation
-    L = utils.MatrixOrNone(L)
-
-
-
-    for i in range(len(step_g)):
-        if constraints[i] is None:
-            step_g[i] = step_f
-        else:
-            import scipy
-            step_g = step_f * scipy.sparse.linalg.norm(constraint)
-        step_g[i] = step_g[i] or step_f
-        assert len(prox_g) == len(step_g)
-    assert len(prox_g) == len(constraints)
-
-    dot_components_ = partial(utils.dot_components_none, dot_components=dot_components)
+    for i in range(M):
+        steps_g[i] = utils.get_step_g(step_f, L=Ls[i], step_g=steps_g[i])
+        Ls[i] = utils.MatrixOrNone(Ls[i])
 
     # Initialization
     X = X0.copy()
-    shape = (len(prox_g),) + X0.shape
-    Z = np.empty(shape)
-    for i in range(len(prox_g)):
-        Z[i] = dot_components_(constraints[i], X)
-    U = np.zeros_like(Z)
-
-    # Update the constrained matrix
+    Z = []
+    U = []
+    for i in range(M):
+        Z.append(Ls[i].dot(X))
+        U.append(np.zeros_like(Z[-1]))
     all_errors = []
     history = []
+
     for it in range(max_iter):
         # Optionally store the current state
         if traceback:
             history.append(X)
 
         # Update the variables
-        _X, _Z, U, CX = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints,
-                                               dot_components_)
+        X, Z_, U, LX = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, Ls)
         # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        result = utils.check_constraint_convergence(step_f, step_g, X, CX, _Z, Z, U,
-                                                    constraints, e_rel, dot_components_)
-        convergence, errors = result
-        all_errors.append(errors)
-
-        X = _X
+        convergence, errors = utils.check_constraint_convergence(step_f, step_g, X, LX, Z_, Z, U, Ls, e_rel)
         Z = _Z
+
+        if traceback:
+            all_errors.append(errors)
+
         if convergence:
             break
-    return it, X, Z, U, all_errors, history
+
+    # undo matrix adaptor
+    for i in range(M):
+        Ls[i] = Ls[i].L
+
+    if it+1 == max_iter:
+        logger.warning("Solution did not converge")
+    logger.info("Completed {0} iterations".format(it+1))
+
+    if not traceback:
+        return X
+    else:
+        tr = utils.Traceback(it=it, Z=Z, U=U, errors=all_errors, history=history)
+        return X, tr
+
 
 def update_steps(it, allXk, constraints, step_beta, wmax=1):
     """Calculate the Lipschitz constants to calculate the steps for each variable
