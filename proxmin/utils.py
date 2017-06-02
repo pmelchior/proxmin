@@ -53,6 +53,30 @@ def lipschitz_const(X):
     """
     return np.real(np.linalg.eigvals(X.dot(X.T)).max())
 
+def get_step_g(step_f, L=None, step_g=None):
+    """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
+    """
+    if L is None: # regular ADMM
+        step_g = step_f
+
+    else: # linearized ADMM
+        LTL = L.T.dot(L)
+        # need spectral norm of L
+        import scipy.sparse
+        if scipy.sparse.issparse(L):
+            if min(L.shape) <= 2:
+                L2 = np.linalg.eigvals(LTL.toarray())
+            else:
+                import scipy.sparse.linalg
+                L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
+        else:
+            L2 = np.linalg.eigvals(LTL).max()
+
+        if step_g is None:
+            step_g = step_f * L2
+        else:
+            assert step_f <= step_g / L2
+    return step_g
 
 def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, constraints, dot_components):
     """Update the primal and dual variables

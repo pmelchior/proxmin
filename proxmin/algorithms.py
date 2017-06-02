@@ -81,44 +81,25 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
-         traceback=False):
+def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Alternating Direction Method of Multipliers
 
     Adapted from Parikh and Boyd (2009).
     """
 
-    if L is None: # regular ADMM
-        step_g = step_f
-
-    else: # linearized ADMM
-        LTL = L.T.dot(L)
-        # need spectral norm of L
-        import scipy.sparse
-        if scipy.sparse.issparse(L):
-            if min(L.shape) <= 2:
-                L2 = np.linalg.eigvals(LTL.toarray())
-            else:
-                import scipy.sparse.linalg
-                L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
-        else:
-            L2 = np.linalg.eigvals(LTL).max()
-
-        if step_g is None:
-            step_g = step_f * L2
-        else:
-            assert step_f <= step_g / L2
-
+    # get/check compatible step size for g
+    step_g = utils.get_step_g(step_f, L=L, step_g=step_g)
     # use matrix adaptor for convenient & fast notation
     L = utils.MatrixOrNone(L)
 
+    # init
     X = X0.copy()
     Z = L.dot(X)
     U = np.zeros_like(Z)
-
     errors = []
     history = []
+
     for it in range(max_iter):
 
         # Optionally store the current state
@@ -161,8 +142,8 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000,
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_iter=1000,
-        traceback=False, dot_components=np.dot):
+def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=1000,
+        traceback=False):
 
     """Implement Simultaneous-Direction Method of Multipliers
 
@@ -181,15 +162,40 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
     using a modified version of the ADMM X update function (from Parikh and Boyd, 2009),
     using an augmented Lagrangian for multiple linear constraints as given in Andreani et al. (2007).
 
-    In the language of Combettes and Pesquet (2009), constraints = list of Li,
-    prox_g = list of ``prox_{gamma g i}``.
     """
-    if not hasattr(prox_g, "__iter__"):
-        prox_g = [prox_g]
-    if not hasattr(step_g, "__iter__"):
-        step_g = [step_g]
-    if not hasattr(constraints, "__iter__"):
-        constraints = [constraints]
+    if not hasattr(proxs_g, "__iter__"):
+        proxs_g = [proxs_g]
+    if not hasattr(steps_g, "__iter__"):
+        steps_g = [steps_g]
+    if not hasattr(Ls, "__iter__"):
+        Ls = [Ls]
+
+    if L is None: # regular ADMM
+        step_g = step_f
+
+    else: # linearized ADMM
+        LTL = L.T.dot(L)
+        # need spectral norm of L
+        import scipy.sparse
+        if scipy.sparse.issparse(L):
+            if min(L.shape) <= 2:
+                L2 = np.linalg.eigvals(LTL.toarray())
+            else:
+                import scipy.sparse.linalg
+                L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
+        else:
+            L2 = np.linalg.eigvals(LTL).max()
+
+        if step_g is None:
+            step_g = step_f * L2
+        else:
+            assert step_f <= step_g / L2
+
+    # use matrix adaptor for convenient & fast notation
+    L = utils.MatrixOrNone(L)
+
+
+
     for i in range(len(step_g)):
         if constraints[i] is None:
             step_g[i] = step_f
@@ -197,7 +203,7 @@ def sdmm(X0, prox_f, step_f, prox_g, step_g, constraints=None, e_rel=1e-6, max_i
             import scipy
             step_g = step_f * scipy.sparse.linalg.norm(constraint)
         step_g[i] = step_g[i] or step_f
-    assert len(prox_g) == len(step_g)
+        assert len(prox_g) == len(step_g)
     assert len(prox_g) == len(constraints)
 
     dot_components_ = partial(utils.dot_components_none, dot_components=dot_components)
