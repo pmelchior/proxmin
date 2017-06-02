@@ -175,7 +175,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     U = []
     for i in range(M):
         Z.append(Ls[i].dot(X))
-        U.append(np.zeros_like(Z[-1]))
+        U.append(np.zeros_like(Z[i]))
     all_errors = []
     history = []
 
@@ -187,8 +187,8 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
         # Update the variables
         X, Z_, U, LX = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, Ls)
         # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, errors = utils.check_constraint_convergence(step_f, step_g, X, LX, Z_, Z, U, Ls, e_rel)
-        Z = _Z
+        convergence, errors = utils.check_constraint_convergence(step_f, steps_g, X, LX, Z_, Z, U, Ls, e_rel)
+        Z = Z_
 
         if traceback:
             all_errors.append(errors)

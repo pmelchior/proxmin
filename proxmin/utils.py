@@ -81,26 +81,22 @@ def get_step_g(step_f, L=None, step_g=None):
 def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
     """Update the primal and dual variables
     """
-
-    M = 1
-    if hasattr(prox_g, "__iter__"):
-        M = len(prox_g)
-
-    if M == 1:
+    if not hasattr(prox_g, "__iter__"):
         X_ = prox_f(X - step_f/step_g * L.T.dot(L.dot(X) - Z + U), step_f)
         LX_ = L.dot(X_)
         Z_ = prox_g(LX_ + U, step_g)
         # this uses relaxation parameter of 1
-        U = U + LX_ - Z_
+        U += LX_ - Z_
     else:
+        M = len(prox_g)
         dX = np.sum([step_f/step_g[i] * L[i].T.dot(L[i].dot(X) - Z[i] + U[i]) for i in range(M)], axis=0)
         X_ = prox_f(X - dX, step_f)
         LX_ = []
-        Z = []
+        Z_ = []
         for i in range(M):
             LX_.append(L[i].dot(X_))
             Z_.append(prox_g[i](LX_[i] + U[i], step_g[i]))
-            U[i] = U[i] + LX_[i] - Z_[i]
+            U[i] += LX_[i] - Z_[i]
 
     return X_ ,Z_, U, LX_
 
