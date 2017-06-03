@@ -89,7 +89,8 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
     """
 
     # get/check compatible step size for g
-    step_g = utils.get_step_g(step_f, L=L, step_g=step_g)
+    step_g = utils.get_steps(step_f, L=L, step_g=step_g)
+    print ("ADMM", step_f, step_g)
     # use matrix adaptor for convenient & fast notation
     L = utils.MatrixOrNone(L)
 
@@ -166,8 +167,9 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     # get/check compatible step sizes for g
     # use matrix adaptor for convenient & fast notation
     for i in range(M):
-        steps_g[i] = utils.get_step_g(step_f, L=Ls[i], step_g=steps_g[i])
+        steps_g[i] = utils.get_steps(step_f, L=Ls[i], step_g=steps_g[i])
         Ls[i] = utils.MatrixOrNone(Ls[i])
+    print ("SDMM", step_f, steps_g)
 
     # Initialization
     X = X0.copy()
@@ -346,47 +348,51 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
     logger.info("Completed {0} iterations".format(it+1))
     return allXk, [all_norms, all_errors], history
 
-def glmm(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
-        e_rel=1e-3, step_beta=1., weights=1, all_step_g=None, all_constraint_norms=None,
-        traceback=False, convergence_func=None, min_iter=10, dot_components=np.dot, **kwargs):
-    """Use the Generalized Linearization Method of Multipliers
+def glmm(X0s, proxs_f, steps_f, proxs_g, steps_g, Ls, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
+    """General Linearized Method of Multipliers.
+
+    TODO: proxs_f needs to ingest all Xs, and be indexable for a given j
+    TODO: steps_f needs to be a callback: Xs, j -> step_f_j
     """
     # Initialize the parameters
-    nbr_variables = len(allX)
-    if np.isscalar(weights):
-        wmax = weights
-    else:
-        wmax = weights.max()
+    N = len(X0s)
     if np.isscalar(e_rel):
-        e_rel = [e_rel]*len(allX)
-    # It is possible to use a different product for each operator,
-    # but if a single component is specified, use it for all of the variables
-    if hasattr(dot_components, '__len__'):
-        all_dot_components = dot_components
-    else:
-        all_dot_components = [None if constraints is None else [dot_components]*len(constraints)
-                                    for constraints in all_constraints]
+        e_rel = [e_rel] * N
+    M = [0] * N
+    assert len(proxs_g) == N
+    #for j in range(N):
 
-    # Initialize the variables
-    allXk = [X.copy() for X in allX]
-    # Initialize the primal and dual variables
-    allZk = []
-    allUk = []
-    for n, X in enumerate(allXk):
-        constraints = all_constraints[n]
-        if constraints is None or len(constraints)==0:
-            allZk.append(X.copy())
-            allUk.append(np.zeros_like(X))
-        else:
-            shape = [len(constraints)]+list(X.shape)
-            allZk.append(np.zeros(shape))
-            allUk.append(np.zeros_like(allZk[-1]))
 
-    # Optionally keep track of the variable history
+    if not hasattr(proxs_g, "__iter__"):
+        proxs_g = [proxs_g]
+    if not hasattr(steps_g, "__iter__"):
+        steps_g = [steps_g]
+    if not hasattr(Ls, "__iter__"):
+        Ls = [Ls]
+    M = len(proxs_g)
+    assert len(steps_g) == M
+    assert len(Ls) == M
+
+    # get/check compatible step sizes for g
+    # use matrix adaptor for convenient & fast notation
+    steps_f = [None] * M
+    for i in range(M):
+        steps_f[i], steps_g[i] = utils.get_steps(step_f, L=Ls[i], step_g=steps_g[i])
+        Ls[i] = utils.MatrixOrNone(Ls[i])
+    step_f = np.min(steps_f)
+    print ("SDMM", step_f, steps_g)
+
+    # Initialization
+    X = X0.copy()
+    Z = []
+    U = []
+    for i in range(M):
+        Z.append(Ls[i].dot(X))
+        U.append(np.zeros_like(Z[i]))
     history = []
-    # Main loop
     all_errors = []
     all_norms = []
+
     for it in range(max_iter):
         # Set the steps for the f and g proximal operators
         f_steps = update_steps(it, allXk, constraints, step_beta, wmax)

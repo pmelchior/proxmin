@@ -53,7 +53,7 @@ def lipschitz_const(X):
     """
     return np.real(np.linalg.eigvals(X.dot(X.T)).max())
 
-def get_step_g(step_f, L=None, step_g=None):
+def get_steps(step_f, L=None, step_g=None):
     """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
     """
     if L is None: # regular ADMM
