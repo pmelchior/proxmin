@@ -9,7 +9,11 @@ class MatrixOrNone(object):
     """Matrix adapter to deal with the absence of a matrix.
     """
     def __init__(self, L):
-        self.L = L
+        # prevent cascade
+        if isinstance(L, MatrixOrNone):
+            self.L = L.L
+        else:
+            self.L = L
 
     @property
     def T(self):
@@ -56,15 +60,19 @@ def lipschitz_const(X):
 def get_steps(step_f, L=None, step_g=None):
     """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
     """
-    if L is None: # regular ADMM
-        step_g = step_f
+    if L.L is None: # regular ADMM
+        if step_g is None:
+            return step_f
+        else:
+            assert step_f <= step_g
+            return step_g
 
     else: # linearized ADMM
-        LTL = L.T.dot(L)
+        LTL = L.T.dot(L.L)
         # need spectral norm of L
         import scipy.sparse
-        if scipy.sparse.issparse(L):
-            if min(L.shape) <= 2:
+        if scipy.sparse.issparse(L.L):
+            if min(L.L.shape) <= 2:
                 L2 = np.linalg.eigvals(LTL.toarray()).max()
             else:
                 import scipy.sparse.linalg
@@ -76,7 +84,7 @@ def get_steps(step_f, L=None, step_g=None):
             step_g = step_f * L2
         else:
             assert step_f <= step_g / L2
-    return step_g
+        return step_g
 
 def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
     """Update the primal and dual variables
