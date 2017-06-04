@@ -91,7 +91,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
     # get/check compatible step size for g
     step_g = utils.get_steps(step_f, L=L, step_g=step_g)
     print ("ADMM", step_f, step_g)
-    # use matrix adaptor for convenient & fast notation
+    # use matrix adapter for convenient & fast notation
     L = utils.MatrixOrNone(L)
 
     # init
@@ -120,7 +120,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
         if convergence:
             break
 
-    # undo matrix adaptor
+    # undo matrix adapter
     L = L.L
 
     if it+1 == max_iter:
@@ -165,7 +165,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     assert len(Ls) == M
 
     # get/check compatible step sizes for g
-    # use matrix adaptor for convenient & fast notation
+    # use matrix adapter for convenient & fast notation
     for i in range(M):
         steps_g[i] = utils.get_steps(step_f, L=Ls[i], step_g=steps_g[i])
         Ls[i] = utils.MatrixOrNone(Ls[i])
@@ -198,7 +198,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
         if convergence:
             break
 
-    # undo matrix adaptor
+    # undo matrix adapter
     for i in range(M):
         Ls[i] = Ls[i].L
 
@@ -348,117 +348,95 @@ def als(allX, all_prox_f, all_prox_g, all_constraints, max_iter=500,
     logger.info("Completed {0} iterations".format(it+1))
     return allXk, [all_norms, all_errors], history
 
-def glmm(X0s, proxs_f, steps_f, proxs_g, steps_g, Ls, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
+def glmm(X0s, proxs_f, step_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
     """General Linearized Method of Multipliers.
 
     TODO: proxs_f needs to ingest all Xs, and be indexable for a given j
-    TODO: steps_f needs to be a callback: Xs, j -> step_f_j
+    TODO: steps_f_cb needs to be a callback: Xs, j -> step_f_j
     """
-    # Initialize the parameters
+    # Set up
     N = len(X0s)
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
     M = [0] * N
+    steps_f = [None] * N
     assert len(proxs_g) == N
-    #for j in range(N):
-
-
-    if not hasattr(proxs_g, "__iter__"):
-        proxs_g = [proxs_g]
-    if not hasattr(steps_g, "__iter__"):
-        steps_g = [steps_g]
-    if not hasattr(Ls, "__iter__"):
-        Ls = [Ls]
-    M = len(proxs_g)
-    assert len(steps_g) == M
-    assert len(Ls) == M
-
-    # get/check compatible step sizes for g
-    # use matrix adaptor for convenient & fast notation
-    steps_f = [None] * M
-    for i in range(M):
-        steps_f[i], steps_g[i] = utils.get_steps(step_f, L=Ls[i], step_g=steps_g[i])
-        Ls[i] = utils.MatrixOrNone(Ls[i])
-    step_f = np.min(steps_f)
-    print ("SDMM", step_f, steps_g)
+    assert len(steps_g) == N
+    assert len(Ls) == N
+    for j in range(N):
+        if not hasattr(proxs_g[j], "__iter__"):
+            proxs_g[j] = [proxs_g[j]]
+        M[j] = len(proxs_g)
+        if not hasattr(steps_g[j], "__iter__"):
+            steps_g[j] = [steps_g[j]]
+        if not hasattr(Ls[j], "__iter__"):
+            Ls = [Ls[j]]
+        assert len(steps_g[j]) == M[j]
+        assert len(Ls[j]) == M[j]
+        # use matrix adapters
+        for i in range(M[j]):
+            Ls[j][i] = utils.MatrixOrNone(Ls[j][i])
+    print ("GLMM", steps_f, steps_g)
 
     # Initialization
-    X = X0.copy()
+    X = []
     Z = []
     U = []
-    for i in range(M):
-        Z.append(Ls[i].dot(X))
-        U.append(np.zeros_like(Z[i]))
+    for j in range(N):
+        X.append(X0s[j].copy())
+        Z.append([])
+        U.append([])
+        for i in range(M[j]):
+            Z[j].append(Ls[j][i].dot(X[j]))
+            U[j].append(np.zeros_like(Z[j][i]))
     history = []
     all_errors = []
-    all_norms = []
+    convergence = [None] * N
+    errors = [None] * N
 
     for it in range(max_iter):
-        # Set the steps for the f and g proximal operators
-        f_steps = update_steps(it, allXk, constraints, step_beta, wmax)
-        if all_step_g is None:
-            g_steps = [f_steps[n]*all_constraint_norms[n] for n in range(len(f_steps))]
-        else:
-            g_steps = all_step_g
-        # Initialize the variables for the k+1 iteration
-        iterations = np.zeros(nbr_variables)
-        _allXk = [X.copy() for X in allXk]
-        _allZk = [None if Z is None else Z.copy() for Z in allZk]
-        allCX = []
-        # Calculate _X{k+1} for all of the variables
-        for n in range(nbr_variables):
-            #logger.debug("var {0} prox_g: {1}".format(n, all_prox_g[n]))
-            _prox_f = partial(all_prox_f[n], allX=_allXk, **kwargs)
-            if all_constraints[n] is not None:
-                # Get the proximal operators for each constraint
-                _prox_g = [partial(prox, allX=_allXk, **kwargs) for prox in all_prox_g[n]]
-                result = utils.update_variables(allXk[n], allZk[n], allUk[n], _prox_f, f_steps[n],
-                                                _prox_g, g_steps[n], all_constraints[n],
-                                                all_dot_components[n])
-                _allXk[n], _allZk[n], allUk[n], CX = result
-                allCX.append(CX)
-            else:
-                # Use the simplified algorithm without a linear constraint
-                _allXk[n] = _prox_f(_allXk[n], f_steps[n])
-                _allZk[n] = None
-                allUk[n] = None
-                allCX.append(None)
-                #_allXk[n] = _prox_f(_allZk[n]-allUk[n], f_steps[n])
-                #_allZk[n] = _prox_g(_allXk[n]+allUk[n], f_steps[n])
-                #allUk[n] = allUk[n] + _allXk[n] - _allZk[n]
-        # Optionally store the current state
+        # get compatible step sizes for f and g
+        for j in range(N):
+            steps_f[j] = steps_f_cb(X0s, j)
+            for i in range(M[j]):
+                steps_g[j][i] = utils.get_steps(step_f[j], L=Ls[j][i], step_g=steps_g[j][i])
+
+            # Update the variables
+            X[j], Z_[j], U[j], LX[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f[j], steps_f[j], proxs_g[j], steps_g[j], Ls[j])
+
+            # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
+            convergence[j], errors[j] = utils.check_constraint_convergence(steps_f[j], steps_g[j], X[j], LX[j], Z_[j], Z[j], U[j], Ls[j], e_rel[j])
+            Z[j] = Z_[j]
+
+            # TODO: do we need a X - X_ convergence criterion?
+            # If so, we need X_ above
+            """
+            # Convergence crit from Langville 2014, section 5
+            iter_norms = []
+            likelihood_convergence = []
+            for n,Xk_ in enumerate(_allXk):
+                convergence, norms = utils.check_convergence(it, Xk_, allXk[n], e_rel[n], min_iter)
+                iter_norms.append(norms)
+                likelihood_convergence.append(convergence)
+            """
+
         if traceback:
-            history.append([_allXk, _allZk, allUk])
-        # Convergence crit from Langville 2014, section 5 ?
-        iter_norms = []
-        likelihood_convergence = []
-        for n,Xk_ in enumerate(_allXk):
-            convergence, norms = utils.check_convergence(it, Xk_, allXk[n], e_rel[n], min_iter)
-            iter_norms.append(norms)
-            likelihood_convergence.append(convergence)
-        # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        admm_convergence = [True]*len(all_constraints)
-        iter_errors = []
-        for n, Xk_ in enumerate(_allXk):
-            if all_constraints[n] is not None:
-                result = utils.check_constraint_convergence(f_steps[n], g_steps[n], Xk_, allCX[n], _allZk[n],
-                                                            allZk[n],allUk[n], all_constraints[n], e_rel[n],
-                                                            all_dot_components[n])
-                admm_convergence[n], errors = result
-                iter_errors.append(errors)
+            all_errors.append(errors)
 
-        # Store the errors
-        all_errors.append(iter_errors)
-        all_norms.append(iter_norms)
-
-        # Update all of the variables
-        allXk = [X.copy() for X in _allXk]
-        allZk = [None if Z is None else Z.copy() for Z in _allZk]
-
-        # If the likelhoods and the dual and primal variables have converged, exit the loop
-        if np.all(likelihood_convergence) and np.all(admm_convergence) and it>min_iter:
+        if np.all(convergence) and it >= min_iter:
             break
-    if it+1==max_iter:
+
+    # undo matrix adapter
+    for j in range(N):
+        for i in range(M[j]):
+            Ls[j][i] = Ls[j][i].L
+
+    if it+1 == max_iter:
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
-    return allXk, [all_norms, all_errors], history
+
+    if not traceback:
+        return X
+    else:
+        tr = utils.Traceback(it=it, Z=Z, U=U, errors=all_errors, history=history)
+        return X, tr
