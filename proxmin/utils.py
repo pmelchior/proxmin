@@ -52,21 +52,9 @@ def l2(x):
     """
     return np.sqrt((x**2).sum())
 
-def lipschitz_const(X):
-    """Calculate the Lipschitz constant to determine the step size
-    """
-    return np.real(np.linalg.eigvals(X.dot(X.T)).max())
-
-def get_steps(step_f, L=None, step_g=None):
-    """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
-    """
-    if L.L is None: # regular ADMM
-        if step_g is None:
-            return step_f
-        else:
-            assert step_f <= step_g
-            return step_g
-
+def get_spectral_norm(L):
+    if L.L is None:
+        return 1
     else: # linearized ADMM
         LTL = L.T.dot(L.L)
         # need spectral norm of L
@@ -79,11 +67,16 @@ def get_steps(step_f, L=None, step_g=None):
                 L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
         else:
             L2 = np.linalg.eigvals(LTL).max()
+        return L2
 
-        if step_g is None:
-            step_g = step_f * L2
-        else:
-            assert step_f <= step_g / L2
+
+def get_step_g(step_f, norm_L2, step_g=None):
+    """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
+    """
+    if step_g is None:
+        return step_f * norm_L2
+    else:
+        assert step_f <= step_g / norm_L2
         return step_g
 
 def do_the_mm(X_, U, prox_g, step_g, L):

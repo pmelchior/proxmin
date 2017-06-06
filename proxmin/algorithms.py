@@ -90,8 +90,10 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
 
     # use matrix adapter for convenient & fast notation
     _L = utils.MatrixOrNone(L)
+    # determine spectral norm of matrix
+    norm_L2 = utils.get_spectral_norm(_L)
     # get/check compatible step size for g
-    step_g = utils.get_steps(step_f, L=_L, step_g=step_g)
+    step_g = utils.get_step_g(step_f, norm_L2, step_g=step_g)
 
     # init
     X = X0.copy()
@@ -163,9 +165,12 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     # get/check compatible step sizes for g
     # use matrix adapter for convenient & fast notation
     _L = []
+    norm_L2 = []
     for i in range(M):
         _L.append(utils.MatrixOrNone(Ls[i]))
-        steps_g[i] = utils.get_steps(step_f, L=_L[i], step_g=steps_g[i])
+        norm_L2.append(utils.get_spectral_norm(_L[i]))
+        # get/check compatible step size for g
+        steps_g[i] = utils.get_step_g(step_f, norm_L2[i], step_g=steps_g[i])
 
     # Initialization
     X = X0.copy()
@@ -233,6 +238,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
 
     # use matrix adapters
     _L = [[ utils.MatrixOrNone(Ls[j][i]) for i in range(M[j])] for j in range(N)]
+    norm_L2 = [[ utils.get_spectral_norm(_L[j][i]) for i in range(M[j])] for j in range(N)]
 
     # Initialization
     X = []
@@ -263,7 +269,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
         for j in range(N):
             steps_f[j] = steps_f_cb(j=j, Xs=X)
             for i in range(M[j]):
-                steps_g[j][i] = utils.get_steps(steps_f[j], L=_L[j][i], step_g=steps_g[j][i])
+                steps_g[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i])
 
             # Update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
