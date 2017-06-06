@@ -99,22 +99,23 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
     X = X0.copy()
     Z = _L.dot(X)
     U = np.zeros_like(Z)
+
     errors = []
     history = []
-
     for it in range(max_iter):
 
         # Optionally store the current state
         if traceback:
-            history.append(X)
+            history.append(X.copy())
 
-        # Update the variables
-        X, Z_, U, LX = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
-        # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, error = utils.check_constraint_convergence(step_f, step_g, X, LX, Z_, Z, U, _L, e_rel)
-        Z = Z_
+        # Update the variables, return LX and primal/dual residual
+        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
+        # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
+        convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
+        # check if step_f is adequate, from Boyd (2011), section 3.4.1
+        lR2, lS2 = error[-2:]
 
-        # Store the errors
+        # store the errors
         if traceback:
             errors.append(error)
 
@@ -185,13 +186,12 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     for it in range(max_iter):
         # Optionally store the current state
         if traceback:
-            history.append(X)
+            history.append(X.copy())
 
-        # Update the variables
-        X, Z_, U, LX = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
-        # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, errors = utils.check_constraint_convergence(step_f, steps_g, X, LX, Z_, Z, U, _L, e_rel)
-        Z = Z_
+        # update the variables
+        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
+        # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
+        convergence, errors = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
 
         if traceback:
             all_errors.append(errors)
@@ -241,17 +241,15 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
     norm_L2 = [[ utils.get_spectral_norm(_L[j][i]) for i in range(M[j])] for j in range(N)]
 
     # Initialization
-    X = []
+    X = [X0s[j].copy() for j in range(N)]
     Z = []
-    Z_ = []
     U = []
-    LX = []
+    LX = [None] * N
+    R = [None] * N
+    S = [None] * N
     for j in range(N):
-        X.append(X0s[j].copy())
         Z.append([])
-        Z_.append([])
         U.append([])
-        LX.append([])
         for i in range(M[j]):
             Z[j].append(_L[j][i].dot(X[j]))
             U[j].append(np.zeros_like(Z[j][i]))
@@ -271,13 +269,11 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
             for i in range(M[j]):
                 steps_g[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i])
 
-            # Update the variables
+            # update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
-            X[j], Z_[j], U[j], LX[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g[j], _L[j])
-
-            # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(steps_f[j], steps_g[j], X[j], LX[j], Z_[j], Z[j], U[j], _L[j], e_rel[j])
-            Z[j] = Z_[j]
+            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g[j], _L[j])
+            # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
+            convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
 
             # TODO: do we need a X - X_ convergence criterion?
             # If so, we need X_ above
