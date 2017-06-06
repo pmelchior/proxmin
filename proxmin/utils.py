@@ -23,7 +23,10 @@ class MatrixOrNone(object):
 
     def dot(self, X):
         if self.L is None:
-            return X.copy()
+             # CAVEAT: This is not a copy (for performance reasons)
+             # so make sure you're not binding it to another variable
+             # OK for all temporary arguments X
+            return X
         return self.L.dot(X)
 
 class Traceback(object):

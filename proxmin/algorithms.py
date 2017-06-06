@@ -97,7 +97,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
 
     # init
     X = X0.copy()
-    Z = _L.dot(X)
+    Z = _L.dot(X).copy()
     U = np.zeros_like(Z)
 
     errors = []
@@ -176,7 +176,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     Z = []
     U = []
     for i in range(M):
-        Z.append(_L[i].dot(X))
+        Z.append(_L[i].dot(X).copy())
         U.append(np.zeros_like(Z[i]))
     all_errors = []
     history = []
@@ -249,7 +249,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
         Z.append([])
         U.append([])
         for i in range(M[j]):
-            Z[j].append(_L[j][i].dot(X[j]))
+            Z[j].append(_L[j][i].dot(X[j]).copy())
             U[j].append(np.zeros_like(Z[j][i]))
     history = []
     all_errors = []
