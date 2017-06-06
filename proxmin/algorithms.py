@@ -112,8 +112,6 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
-        # check if step_f is adequate, from Boyd (2011), section 3.4.1
-        lR2, lS2 = error[-2:]
 
         # store the errors
         if traceback:

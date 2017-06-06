@@ -23,7 +23,7 @@ class MatrixOrNone(object):
 
     def dot(self, X):
         if self.L is None:
-            return X
+            return X.copy()
         return self.L.dot(X)
 
 class Traceback(object):
