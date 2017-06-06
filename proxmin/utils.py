@@ -86,26 +86,28 @@ def get_steps(step_f, L=None, step_g=None):
             assert step_f <= step_g / L2
         return step_g
 
+def do_the_mm(X_, U, prox_g, step_g, L):
+    LX_ = L.dot(X_)
+    Z_ = prox_g(LX_ + U, step_g)
+    # this uses relaxation parameter of 1
+    U += LX_ - Z_
+    return LX_, Z_, U
+
 def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
     """Update the primal and dual variables
     """
     if not hasattr(prox_g, "__iter__"):
-        X_ = prox_f(X - step_f/step_g * L.T.dot(L.dot(X) - Z + U), step_f)
-        LX_ = L.dot(X_)
-        Z_ = prox_g(LX_ + U, step_g)
-        # this uses relaxation parameter of 1
-        U += LX_ - Z_
+        dX = step_f/step_g * L.T.dot(L.dot(X) - Z + U)
+        X_ = prox_f(X - dX, step_f)
+        LX_, Z_, U = do_the_mm(X_, U, prox_g, step_g, L)
     else:
         M = len(prox_g)
         dX = np.sum([step_f/step_g[i] * L[i].T.dot(L[i].dot(X) - Z[i] + U[i]) for i in range(M)], axis=0)
         X_ = prox_f(X - dX, step_f)
-        LX_ = []
-        Z_ = []
+        LX_ = [None] * M
+        Z_ = [None] * M
         for i in range(M):
-            LX_.append(L[i].dot(X_))
-            Z_.append(prox_g[i](LX_[i] + U[i], step_g[i]))
-            U[i] += LX_[i] - Z_[i]
-
+            LX_[i], Z_[i], U[i] = do_the_mm(X_, U[i], prox_g[i], step_g[i], L[i])
     return X_ ,Z_, U, LX_
 
 def get_variable_errors(L, LX, Z, U, e_rel):
@@ -143,7 +145,7 @@ def check_constraint_convergence(step_f, step_g, X, LX, Z_, Z, U, L, e_rel):
         e_pri2, e_dual2 = get_variable_errors(L, LX, Z_, U, e_rel)
         lR = l2sq(R)
         lS = l2sq(S)
-        convergence = (lR <= e_pri2) and (lS <= e_dual2)
+        convergence = np.isclose(lR, e_pri2, atol=e_rel**2) & np.isclose(lS, e_dual2, atol=e_rel**2)
         return convergence, (e_pri2, e_dual2, lR, lS)
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
