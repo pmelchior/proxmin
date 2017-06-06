@@ -132,7 +132,7 @@ def get_variable_errors(L, LX, Z, U, e_rel):
     calculate the errors in the prime and dual variables, used by the
     Boyd 2011 Section 3 stopping criteria.
     """
-    e_pri2 = e_rel**2*np.max([l2sq(LX), l2sq(Z), 1])
+    e_pri2 = e_rel**2*np.max([l2sq(LX), l2sq(Z)])
     e_dual2 = e_rel**2*l2sq(L.T.dot(U))
     return e_pri2, e_dual2
 
