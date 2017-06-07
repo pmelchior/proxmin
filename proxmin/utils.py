@@ -45,6 +45,12 @@ class Traceback(object):
             message += "\t%s: %r\n" % (k,v)
         return message
 
+def initXZU(X0, L):
+    X = X0.copy()
+    Z = L.dot(X).copy()
+    U = np.zeros_like(Z)
+    return X,Z,U
+
 def l2sq(x):
     """Sum the matrix elements squared
     """
@@ -71,7 +77,6 @@ def get_spectral_norm(L):
         else:
             L2 = np.linalg.eigvals(LTL).max()
         return L2
-
 
 def get_step_g(step_f, norm_L2, step_g=None):
     """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.

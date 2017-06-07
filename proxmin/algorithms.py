@@ -96,9 +96,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
     step_g = utils.get_step_g(step_f, norm_L2, step_g=step_g)
 
     # init
-    X = X0.copy()
-    Z = _L.dot(X).copy()
-    U = np.zeros_like(Z)
+    X,Z,U = utils.initXZU(X0, _L)
 
     errors = []
     history = []
@@ -112,6 +110,14 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
+        # if primal residual does not improve: decrease step_f and step_g, and restart
+        if it > 0:
+            if (R == R_).all():
+                step_f /= 2
+                step_g = utils.get_step_g(step_f, norm_L2, step_g=step_g)
+                X,Z,U  = utils.initXZU(X0, _L)
+                logger.warning("Restarting with step_f = %.3f" % step_f)
+        R_ = R
 
         # store the errors
         if traceback:
