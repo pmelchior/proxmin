@@ -91,7 +91,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
     # use matrix adapter for convenient & fast notation
     _L = utils.MatrixOrNone(L)
     # determine spectral norm of matrix
-    norm_L2 = utils.get_spectral_norm(_L)
+    norm_L2 = utils.get_spectral_norm(_L.L)
     # get/check compatible step size for g
     step_g = utils.get_step_g(step_f, norm_L2, step_g=step_g)
 
@@ -168,7 +168,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     norm_L2 = []
     for i in range(M):
         _L.append(utils.MatrixOrNone(Ls[i]))
-        norm_L2.append(utils.get_spectral_norm(_L[i]))
+        norm_L2.append(utils.get_spectral_norm(_L[i].L))
         # get/check compatible step size for g
         steps_g[i] = utils.get_step_g(step_f, norm_L2[i], step_g=steps_g[i])
 
@@ -210,7 +210,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
         return X, tr
 
 
-def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
+def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g0, Ls, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
     """General Linearized Method of Multipliers.
 
     TODO: proxs_f must have signature prox(X,step, j=None, Xs=None)
@@ -223,22 +223,24 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
     M = [0] * N
     steps_f = [None] * N
     assert len(proxs_g) == N
-    assert len(steps_g) == N
+    assert len(steps_g0) == N
     assert len(Ls) == N
     for j in range(N):
         if not hasattr(proxs_g[j], "__iter__"):
             proxs_g[j] = [proxs_g[j]]
         M[j] = len(proxs_g[j])
-        if not hasattr(steps_g[j], "__iter__"):
-            steps_g[j] = [steps_g[j]]
+        if not hasattr(steps_g0[j], "__iter__"):
+            steps_g0[j] = [steps_g0[j]]
         if not hasattr(Ls[j], "__iter__"):
             Ls[j] = [Ls[j]]
-        assert len(steps_g[j]) == M[j]
+        assert len(steps_g0[j]) == M[j]
         assert len(Ls[j]) == M[j]
+    # need container for current-iteration steps_g
+    steps_g = [[[None] for i in range(M[j])] for j in range(N)]
 
     # use matrix adapters
     _L = [[ utils.MatrixOrNone(Ls[j][i]) for i in range(M[j])] for j in range(N)]
-    norm_L2 = [[ utils.get_spectral_norm(_L[j][i]) for i in range(M[j])] for j in range(N)]
+    norm_L2 = [[ utils.get_spectral_norm(_L[j][i].L) for i in range(M[j])] for j in range(N)]
 
     # Initialization
     X = []
@@ -269,7 +271,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
         for j in range(N):
             steps_f[j] = steps_f_cb(j=j, Xs=X)
             for i in range(M[j]):
-                steps_g[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i])
+                steps_g[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g0[j][i])
 
             # Update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)

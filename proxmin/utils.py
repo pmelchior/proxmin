@@ -53,13 +53,13 @@ def l2(x):
     return np.sqrt((x**2).sum())
 
 def get_spectral_norm(L):
-    if L.L is None:
+    if L is None:
         return 1
     else: # linearized ADMM
-        LTL = L.T.dot(L.L)
+        LTL = L.T.dot(L)
         # need spectral norm of L
         import scipy.sparse
-        if scipy.sparse.issparse(L.L):
+        if scipy.sparse.issparse(L):
             if min(L.L.shape) <= 2:
                 L2 = np.linalg.eigvals(LTL.toarray()).max()
             else:
