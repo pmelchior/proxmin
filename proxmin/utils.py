@@ -136,10 +136,10 @@ def check_constraint_convergence(step_f, step_g, X, LX, Z_, Z, U, L, e_rel):
         R = LX - Z_
         S = -step_f/step_g * L.T.dot(Z_ - Z)
         e_pri2, e_dual2 = get_variable_errors(L, LX, Z_, U, e_rel)
-        lR = l2sq(R)
-        lS = l2sq(S)
-        convergence = np.isclose(lR, e_pri2, atol=e_rel**2) & np.isclose(lS, e_dual2, atol=e_rel**2)
-        return convergence, (e_pri2, e_dual2, lR, lS)
+        lR2 = l2sq(R)
+        lS2 = l2sq(S)
+        convergence = (lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) & (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2))
+        return convergence, (e_pri2, e_dual2, lR2, lS2)
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
     """Check that the algorithm converges using Langville 2014 criteria

@@ -51,9 +51,9 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs
         if l0_thresh is not None:
             if l1_thresh is not None:
                 logger.warn("Warning: l1_thresh ignored in favor of l0_thresh")
-            prox_S = partial(prox_hard, l=l0_thresh)
-        else:
-            prox_S = partial(prox_soft_plus, l=l1_thresh)
+            prox_S = partial(operators.prox_hard, l=l0_thresh)
+        elif l1_thresh is not None:
+            prox_S = partial(operators.prox_soft_plus, l=l1_thresh)
 
     # get max of W
     if W is not None:
