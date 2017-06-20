@@ -47,7 +47,7 @@ def prox_soft(X, step, thresh=0):
 def prox_soft_plus(X, step, l=0):
     """Soft thresholding with projection onto non-negative numbers
     """
-    return prox_plus(prox_soft(X, step, l=l), step)
+    return prox_plus(prox_soft(X, step, thresh=l), step)
 
 def prox_unity(X, step, axis=0):
     """Projection onto sum=1 along an axis
