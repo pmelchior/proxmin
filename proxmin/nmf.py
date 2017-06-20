@@ -39,11 +39,11 @@ def steps_AS(Xs=None, j=None, Wmax=1):
         L = utils.get_spectral_norm(Xs[0]) * Wmax # ||A.T * A||
     return 1./L
 
-def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, W=None, Ls=None, l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3, traceback=False):
+def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None, l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3, traceback=False):
 
     # for S: use non-negative or sparsity constraints directly
     from functools import partial
-    if prox_S is not operators.prox_plus:
+    if prox_S is not None:
         if l0_thresh is not None or l1_thresh is not None:
             logger.warn("Warning: l0_thresh or l1_thresh ignored because prox_S is set")
     else:
@@ -54,6 +54,11 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs
             prox_S = partial(operators.prox_hard, l=l0_thresh)
         elif l1_thresh is not None:
             prox_S = partial(operators.prox_soft_plus, l=l1_thresh)
+<<<<<<< HEAD
+        else:
+            prox_S = operators.prox_plus
+=======
+>>>>>>> 75dd20524c05801341fd8031a7fd42dcefc5d586
 
     # get max of W
     if W is not None:
