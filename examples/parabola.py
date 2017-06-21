@@ -1,18 +1,21 @@
-from proxmin import algorithms as pa, proximal as pp
+from proxmin import algorithms as pa
 from functools import partial
 import numpy as np
 
+dx = 1
+dy = 0.5
+
 def f(x,y):
     """Shifted parabola"""
-    return (x-1)**2 + y**2
+    return (x-dx)**2 + (y - dy)**2
 
 def grad_fx(x,y):
     """Gradient of f wrt x"""
-    return 2*x - 2
+    return 2*(x - dx)
 
 def grad_fy(x,y):
     """Gradient of f wrt y"""
-    return 2*y
+    return 2*(y - dy)
 
 def grad_f(xy):
     """Gradient of f"""
@@ -32,7 +35,7 @@ def prox_circle(xy, step):
     else:
         return xy
 
-def prox_xline(x, step):
+def prox_xline(x, step, j=0, Xs=0):
     """Projection onto line in x"""
     if not np.isscalar(x):
         x= x[0]
@@ -41,7 +44,7 @@ def prox_xline(x, step):
     else:
         return np.array([x])
 
-def prox_yline(y, step):
+def prox_yline(y, step, j=0, Xs=0):
     """Projection onto line in y"""
     if not np.isscalar(y):
         y= y[0]
@@ -83,8 +86,66 @@ def prox_gradf12(x, step, j=None, Xs=None):
 
 def prox_lim12(xy, step, j=None, Xs=None, boundary=None):
     """1D projection operator"""
-    # TODO: split boundary in x1 and x2 and use appropriate operator
-    return xy
+    if j == 0:
+        x = xy[0]
+        y = Xs[1][0]
+    elif j == 1:
+        x = Xs[0][0]
+        y = xy[0]
+    # return np.array([prox_circle1(x,y,j)])
+    return np.array([prox_circle2(x,y,j)])
+
+def prox_circle1(x, y, j):
+    """Finds prox in 1D case, if there is no valid x/y value, 
+        returns the closest x/y value for which there exists an in-bounds y/x"""
+    if j == 0:
+        if np.abs(y) > 0.5:
+            if x > 0.5:
+                res = 0.5
+            elif x < -0.5:
+                res = -0.5
+            else:
+                res = x
+        else:
+            bound = np.sqrt(0.25 - y**2)
+            if x > bound:
+                res = bound
+            elif x < -bound:
+                res = -bound
+            else:
+                res = x
+    if j == 1:
+        if np.abs(x) > 0.5:
+            if y > 0.5:
+                res = 0.5
+            elif y < -0.5:
+                res = -0.5
+            else:
+                res = y
+        else:
+            bound = np.sqrt(0.25 - x**2)
+            if y > bound:
+                res = bound
+            elif y < -bound:
+                res = -bound
+            else:
+                res = y
+    return res
+
+def prox_circle2(x, y, j):
+    """Returns the x/y value of point on the circle closest (in 2-space) to (x, y)"""
+    radius = np.sqrt(x**2 + y**2)
+    if radius > 0.5:
+        if j == 0:
+            res = x*0.5/radius
+        if j == 1:
+            res = y*0.5/radius
+    else:
+        if j == 0:
+            res = x
+        if j == 1:
+            res = y
+    return res
 
 def steps_f12(j=None, Xs=None):
     """Stepsize for f update given current state of Xs"""
@@ -95,7 +156,6 @@ def steps_f12(j=None, Xs=None):
         L = 2
     slack = 0.5
     return slack / L
-
 
 def plotResults(traj, label, boundary=None):
     print (len(traj), traj[-1])
@@ -125,11 +185,12 @@ def plotResults(traj, label, boundary=None):
     ax.text(0.05, 0.95, 'it %d: (%.3f, %.3f)' % (len(traj), traj[-1][0], traj[-1][1]), transform=ax.transAxes, color='k', ha='left', va='top')
     ax.set_title(label)
     fig.show()
+    plt.show()
 
 
 if __name__ == "__main__":
     xy = np.array([-1.,-1.])
-    boundary = "line" # "circle"
+    boundary = "line" # "circle" 
     max_iter = 100
 
     # step sizes and proximal operators for boundary
@@ -164,13 +225,19 @@ if __name__ == "__main__":
     plotResults(tr.history, "SDMM", boundary=boundary)
 
     # GLMM
+    L = None
     N = 2
     XY = [np.array([xy[0]]), np.array([xy[1]])]
-    M1 = 3
-    M2 = 7
-    # TODO: implement circle constraint for GLMM via prox_lim12 above
-    proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
+    M1 = 1
+    M2 = 1
+
+    if boundary == "circle":
+        proxs_g = [[prox_lim12]*M1,[prox_lim12]*M2]
+    if boundary == "line":
+        proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
+    
     steps_g = [[step_f * M1 * N] * M1, [step_f * M2 * N] * M2]
     Ls = [[L for i in range(M1)], [L for i in range(M2)]]
     x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, traceback=True)
     plotResults(tr.history, "GLMM", boundary=boundary)
+    
