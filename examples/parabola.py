@@ -190,7 +190,7 @@ def plotResults(traj, label, boundary=None):
 
 if __name__ == "__main__":
     xy = np.array([-1.,-1.])
-    boundary = "line" # "circle" 
+    boundary = "circle" # "line"
     max_iter = 100
 
     # step sizes and proximal operators for boundary
