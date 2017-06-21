@@ -268,14 +268,17 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g0, Ls, min_iter=10, max_iter=
             history.append([X[j].copy() for j in range(N)])
 
         # get compatible step sizes for f and g
+        proxs_g_ = []
         for j in range(N):
             steps_f[j] = steps_f_cb(j=j, Xs=X)
+            proxs_g_.append([])
             for i in range(M[j]):
                 steps_g[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g0[j][i])
+                proxs_g_[j].append(partial(proxs_g[j][i], j=j, Xs=X))
 
             # Update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
-            X[j], Z_[j], U[j], LX[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g[j], _L[j])
+            X[j], Z_[j], U[j], LX[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g_[j], steps_g[j], _L[j])
 
             # ADMM Convergence Criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(steps_f[j], steps_g[j], X[j], LX[j], Z_[j], Z[j], U[j], _L[j], e_rel[j])
