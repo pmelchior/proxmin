@@ -98,22 +98,19 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
     # init
     X,Z,U = utils.initXZU(X0, _L)
 
-    errors = []
-    history = []
+    errors = [None]
+    history = [X.copy()]
     it = 0
     while it < max_iter:
-
-        # Optionally store the current state
-        if traceback:
-            history.append(X.copy())
 
         # Update the variables, return LX and primal/dual residual
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
 
-        # store the errors
+        # store current state and errors
         if traceback:
+            history.append(X.copy())
             errors.append(error)
 
         if convergence:
@@ -186,21 +183,20 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
 
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
-    all_errors = []
-    history = []
+    all_errors = [None]
+    history = [X.copy()]
 
     it = 0
     while it < max_iter:
-        # Optionally store the current state
-        if traceback:
-            history.append(X.copy())
 
         # update the variables
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, errors = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
 
+        # store current state and errors
         if traceback:
+            history.append(X.copy())
             all_errors.append(errors)
 
         if convergence:
@@ -271,16 +267,14 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
         X.append(Xj)
         Z.append(Zj)
         U.append(Uj)
-    history = []
-    all_errors = []
+    # containers
+    history = [[X[j].copy() for j in range(N)]]
+    all_errors = [None]
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
 
     it = 0
     while it < max_iter:
-        # Optionally store the current state
-        if traceback:
-            history.append([X[j].copy() for j in range(N)])
 
         # get compatible step sizes for f and g
         for j in range(N):
@@ -305,8 +299,10 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
                 iter_norms.append(norms)
                 likelihood_convergence.append(convergence)
             """
-
+            
+        # store current state and errors
         if traceback:
+            history.append([X[j].copy() for j in range(N)])
             all_errors.append(errors)
 
         if all(convergence):#3 and it >= min_iter:
