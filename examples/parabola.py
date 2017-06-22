@@ -150,27 +150,23 @@ if __name__ == "__main__":
     plotResults(tr.history, "APGM", boundary=boundary)
 
     # ADMM
-    L = None
-    step_g = step_f
-    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, step_g, L=L, max_iter=max_iter, traceback=True)
+    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=True)
     plotResults(tr.history, "ADMM", boundary=boundary)
 
     # SDMM
     M = 2
     proxs_g = [prox_g] * M # using same constraint several, i.e. M, times
-    steps_g = [step_f * M for j in range(M)] # NOTE: step_g * M !!!!
-    Ls = [L] * M
-    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, traceback=True)
+    #steps_g = [step_f * M for j in range(M)] # NOTE: step_g * M !!!!
+    #Ls = [L] * M
+    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
     plotResults(tr.history, "SDMM", boundary=boundary)
 
     # GLMM
     if boundary == "line":
         N = 2
         XY = [np.array([xy[0]]), np.array([xy[1]])]
-        M1 = 1
-        M2 = 1
+        M1 = 7
+        M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-        steps_g = [[step_f * M1 * N] * M1, [step_f * M2 * N] * M2]
-        Ls = [[L for i in range(M1)], [L for i in range(M2)]]
-        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, traceback=True)
+        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
         plotResults(tr.history, "GLMM", boundary=boundary)

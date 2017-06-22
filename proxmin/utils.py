@@ -85,13 +85,21 @@ def get_spectral_norm(L):
             L2 = np.linalg.eigvals(LTL).max()
         return L2
 
-def get_step_g(step_f, norm_L2, step_g=None):
+def get_step_g(step_f, norm_L2, step_g=None, N=1, M=1):
     """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
     """
+    # Nominally: minimum step size is step_f * norm_L2
+    # see Parikh 2013, sect. 4.4.2
+    #
+    # BUT: For multiple constraints, need to multiply by M.
+    # AND: For multiple variables, need to multiply by N.
+    # Worst case of constraints being totally correlated, otherwise Z-updates
+    # overwhelm X-updates entirely -> blow-up
+
     if step_g is None:
-        return step_f * norm_L2
+        return step_f * norm_L2 * N * M
     else:
-        assert step_f <= step_g / norm_L2
+        assert step_f <= step_g / norm_L2 / (N * M)
         return step_g
 
 def get_step_f(step_f, lR2, lS2):

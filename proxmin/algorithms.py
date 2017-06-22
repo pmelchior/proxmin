@@ -81,7 +81,7 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, traceback=False):
+def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Alternating Direction Method of Multipliers
 
@@ -141,7 +141,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=1000, traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Implement Simultaneous-Direction Method of Multipliers
 
@@ -163,11 +163,14 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
     """
     if not hasattr(proxs_g, "__iter__"):
         proxs_g = [proxs_g]
-    if not hasattr(steps_g, "__iter__"):
-        steps_g = [steps_g]
-    if not hasattr(Ls, "__iter__"):
-        Ls = [Ls]
     M = len(proxs_g)
+
+    # if steps_g / Ls are None or single: create M duplicates
+    if not hasattr(steps_g, "__iter__"):
+        steps_g = [steps_g] * M
+    if not hasattr(Ls, "__iter__"):
+        Ls = [Ls] * M
+    # check for cases in which a list was given
     assert len(steps_g) == M
     assert len(Ls) == M
 
@@ -179,7 +182,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
         _L.append(utils.MatrixOrNone(Ls[i]))
         norm_L2.append(utils.get_spectral_norm(_L[i].L))
         # get/check compatible step size for g
-        steps_g[i] = utils.get_step_g(step_f, norm_L2[i], step_g=steps_g[i])
+        steps_g[i] = utils.get_step_g(step_f, norm_L2[i], step_g=steps_g[i], M=M)
 
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
@@ -229,7 +232,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
         return X, tr
 
 
-def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g0, Ls, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
+def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
     """General Linearized Method of Multipliers.
 
     TODO: proxs_f must have signature prox(X,step, j=None, Xs=None)
@@ -237,25 +240,35 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g0, Ls, min_iter=10, max_iter=
     """
     # Set up
     N = len(X0s)
+    assert len(proxs_g) == N
+
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
-    M = [0] * N
     steps_f = [None] * N
-    assert len(proxs_g) == N
-    assert len(steps_g0) == N
+
+    # if steps_g / Ls are None or single: create N duplicates
+    if not hasattr(steps_g, "__iter__"):
+        steps_g = [steps_g] * N
+    if not hasattr(Ls, "__iter__"):
+        Ls = [Ls] * N
+    # check for cases in which a list was given
+    assert len(steps_g) == N
     assert len(Ls) == N
+
+    M = [0] * N
     for j in range(N):
         if not hasattr(proxs_g[j], "__iter__"):
             proxs_g[j] = [proxs_g[j]]
         M[j] = len(proxs_g[j])
-        if not hasattr(steps_g0[j], "__iter__"):
-            steps_g0[j] = [steps_g0[j]]
+        if not hasattr(steps_g[j], "__iter__"):
+            steps_g[j] = [steps_g[j]] * M[j]
         if not hasattr(Ls[j], "__iter__"):
-            Ls[j] = [Ls[j]]
-        assert len(steps_g0[j]) == M[j]
+            Ls[j] = [Ls[j]] * M[j]
+        assert len(steps_g[j]) == M[j]
         assert len(Ls[j]) == M[j]
+
     # need container for current-iteration steps_g
-    steps_g = [[[None] for i in range(M[j])] for j in range(N)]
+    steps_g_ = [[[None] for i in range(M[j])] for j in range(N)]
 
     # use matrix adapters
     _L = [[ utils.MatrixOrNone(Ls[j][i]) for i in range(M[j])] for j in range(N)]
@@ -282,11 +295,11 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g0, Ls, min_iter=10, max_iter=
         for j in range(N):
             steps_f[j] = steps_f_cb(j=j, Xs=X) * slack[j]
             for i in range(M[j]):
-                steps_g[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g0[j][i])
+                steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i], N=N, M=M[j])
 
             # update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
-            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g[j], _L[j])
+            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
 
@@ -301,7 +314,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g0, Ls, min_iter=10, max_iter=
                 iter_norms.append(norms)
                 likelihood_convergence.append(convergence)
             """
-            
+
         # store current state and errors
         if traceback:
             history.append([X[j].copy() for j in range(N)])
