@@ -100,7 +100,8 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
 
     errors = []
     history = []
-    for it in range(max_iter):
+    it = 0
+    while it < max_iter:
 
         # Optionally store the current state
         if traceback:
@@ -110,14 +111,6 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
-        # if primal residual does not improve: decrease step_f and step_g, and restart
-        if it > 0:
-            if (R == R_).all():
-                step_f /= 2
-                step_g = utils.get_step_g(step_f, norm_L2, step_g=step_g)
-                X,Z,U  = utils.initXZU(X0, _L)
-                logger.warning("Restarting with step_f = %.3f" % step_f)
-        R_ = R
 
         # store the errors
         if traceback:
@@ -125,6 +118,20 @@ def admm(X0, prox_f, step_f, prox_g, step_g, L=None, e_rel=1e-6, max_iter=1000, 
 
         if convergence:
             break
+
+        it += 1
+
+        # if X and primal residual does not change: decrease step_f and step_g, and restart
+        if it > 1:
+            if (X == X_).all() and (R == R_).all():
+                step_f /= 2
+                step_g /= 2
+                # re-init
+                it = 0
+                X,Z,U  = utils.initXZU(X0, _L)
+                logger.warning("Restarting with step_f = %.3f" % step_f)
+        R_ = R
+        X_ = X.copy()
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
@@ -178,16 +185,12 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
         steps_g[i] = utils.get_step_g(step_f, norm_L2[i], step_g=steps_g[i])
 
     # Initialization
-    X = X0.copy()
-    Z = []
-    U = []
-    for i in range(M):
-        Z.append(_L[i].dot(X).copy())
-        U.append(np.zeros_like(Z[i]))
+    X,Z,U = utils.initXZU(X0, _L)
     all_errors = []
     history = []
 
-    for it in range(max_iter):
+    it = 0
+    while it < max_iter:
         # Optionally store the current state
         if traceback:
             history.append(X.copy())
@@ -202,6 +205,22 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g, Ls=None, e_rel=1e-6, max_iter=100
 
         if convergence:
             break
+
+        it += 1
+
+        # if X and primal residual does not change: decrease step_f and step_g, and restart
+        if it > 1:
+            if (X == X_).all() and all([(R[i] == R_[i]).all() for i in range(M)]):
+                step_f /= 2
+                for i in range(M):
+                    steps_g[i] /= 2
+
+                # re-init
+                it = 0
+                X,Z,U  = utils.initXZU(X0, _L)
+                logger.warning("Restarting with step_f = %.3f" % step_f)
+        R_ = R
+        X_ = X.copy()
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
@@ -245,31 +264,27 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
     norm_L2 = [[ utils.get_spectral_norm(_L[j][i]) for i in range(M[j])] for j in range(N)]
 
     # Initialization
-    X = [X0s[j].copy() for j in range(N)]
-    Z = []
-    U = []
-    LX = [None] * N
-    R = [None] * N
-    S = [None] * N
+    X, Z, U = [],[],[]
+    LX, R, S = [None] * N, [None] * N, [None] * N
     for j in range(N):
-        Z.append([])
-        U.append([])
-        for i in range(M[j]):
-            Z[j].append(_L[j][i].dot(X[j]).copy())
-            U[j].append(np.zeros_like(Z[j][i]))
+        Xj, Zj, Uj = utils.initXZU(X0s[j], _L[j])
+        X.append(Xj)
+        Z.append(Zj)
+        U.append(Uj)
     history = []
     all_errors = []
-    convergence = [None] * N
-    errors = [None] * N
+    convergence, errors = [None] * N, [None] * N
+    slack = [1.] * N
 
-    for it in range(max_iter):
+    it = 0
+    while it < max_iter:
         # Optionally store the current state
         if traceback:
             history.append([X[j].copy() for j in range(N)])
 
         # get compatible step sizes for f and g
         for j in range(N):
-            steps_f[j] = steps_f_cb(j=j, Xs=X)
+            steps_f[j] = steps_f_cb(j=j, Xs=X) * slack[j]
             for i in range(M[j]):
                 steps_g[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i])
 
@@ -294,8 +309,24 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g, Ls, min_iter=10, max_iter=1
         if traceback:
             all_errors.append(errors)
 
-        if np.all(convergence) and it >= min_iter:
+        if all(convergence):#3 and it >= min_iter:
             break
+
+        it += 1
+
+        # if X and primal residual does not change: decrease step_f and step_g, and restart
+        if it > 1:
+            # perform step size update for each Xj independently
+            for j in range(N):
+                if (X[j] == X_[j]).all() and all([(R[j][i] == R_[j][i]).all() for i in range(M[j])]):
+                    slack[j] /= 2
+
+                    # re-init
+                    it = 0
+                    X[j],Z[j],U[j]  = utils.initXZU(X0, _L[j])
+                    logger.warning("Restarting with step_f[%d] = %.3f" % (j,step_f[j]*slack[j]))
+        R_ = R
+        X_ = [X[j].copy() for j in range(N)]
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")

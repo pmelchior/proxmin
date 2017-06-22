@@ -47,8 +47,15 @@ class Traceback(object):
 
 def initXZU(X0, L):
     X = X0.copy()
-    Z = L.dot(X).copy()
-    U = np.zeros_like(Z)
+    if not isinstance(L, list):
+        Z = L.dot(X).copy()
+        U = np.zeros_like(Z)
+    else:
+        Z = []
+        U = []
+        for i in range(len(L)):
+            Z.append(L[i].dot(X).copy())
+            U.append(np.zeros_like(Z[i]))
     return X,Z,U
 
 def l2sq(x):
@@ -93,7 +100,6 @@ def get_step_f(step_f, lR2, lS2):
     See Boyd (2011), section 3.4.1
     """
     mu, tau = 10, 2
-    print (step_f, lR2, lS2)
     if lR2 > mu*lS2:
         return step_f * tau
     elif lS2 > mu*lR2:
@@ -118,7 +124,7 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
 
     Returns: LX, R, S
     """
-    if not hasattr(prox_g, "__iter__"):
+    if not isinstance(prox_g, list):
         dX = step_f/step_g * L.T.dot(L.dot(X) - Z + U)
         X[:] = prox_f(X - dX, step_f)
         LX, R, S = do_the_mm(X, step_f, Z, U, prox_g, step_g, L)
@@ -151,7 +157,7 @@ def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
     variables for each constraint have converged.
     """
 
-    if hasattr(L, "__iter__"):
+    if isinstance(L, list):
         M = len(L)
         convergence = True
         errors = []
