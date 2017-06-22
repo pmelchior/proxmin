@@ -23,6 +23,9 @@ class MatrixOrNone(object):
 
     def dot(self, X):
         if self.L is None:
+             # CAVEAT: This is not a copy (for performance reasons)
+             # so make sure you're not binding it to another variable
+             # OK for all temporary arguments X
             return X
         return self.L.dot(X)
 
@@ -41,6 +44,19 @@ class Traceback(object):
         for k,v in self.__dict__.iteritems():
             message += "\t%s: %r\n" % (k,v)
         return message
+
+def initXZU(X0, L):
+    X = X0.copy()
+    if not isinstance(L, list):
+        Z = L.dot(X).copy()
+        U = np.zeros_like(Z)
+    else:
+        Z = []
+        U = []
+        for i in range(len(L)):
+            Z.append(L[i].dot(X).copy())
+            U.append(np.zeros_like(Z[i]))
+    return X,Z,U
 
 def l2sq(x):
     """Sum the matrix elements squared
@@ -69,7 +85,6 @@ def get_spectral_norm(L):
             L2 = np.linalg.eigvals(LTL).max()
         return L2
 
-
 def get_step_g(step_f, norm_L2, step_g=None):
     """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
     """
@@ -79,29 +94,50 @@ def get_step_g(step_f, norm_L2, step_g=None):
         assert step_f <= step_g / norm_L2
         return step_g
 
-def do_the_mm(X_, U, prox_g, step_g, L):
-    LX_ = L.dot(X_)
-    Z_ = prox_g(LX_ + U, step_g)
+def get_step_f(step_f, lR2, lS2):
+    """Update the stepsize of given the primal and dual errors.
+
+    See Boyd (2011), section 3.4.1
+    """
+    mu, tau = 10, 2
+    if lR2 > mu*lS2:
+        return step_f * tau
+    elif lS2 > mu*lR2:
+        return step_f / tau
+    return step_f
+
+def do_the_mm(X, step_f, Z, U, prox_g, step_g, L):
+    LX = L.dot(X)
+    Z_ = prox_g(LX + U, step_g)
+    # primal and dual errors
+    R = LX - Z_
+    S = -step_f/step_g * L.T.dot(Z_ - Z)
+    Z[:] = Z_[:] # force the copy
     # this uses relaxation parameter of 1
-    U += LX_ - Z_
-    return LX_, Z_, U
+    U[:] += R
+    return LX, R, S
 
 def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
     """Update the primal and dual variables
+
+    Note: X, Z, U are updated inline
+
+    Returns: LX, R, S
     """
-    if not hasattr(prox_g, "__iter__"):
+    if not isinstance(prox_g, list):
         dX = step_f/step_g * L.T.dot(L.dot(X) - Z + U)
-        X_ = prox_f(X - dX, step_f)
-        LX_, Z_, U = do_the_mm(X_, U, prox_g, step_g, L)
+        X[:] = prox_f(X - dX, step_f)
+        LX, R, S = do_the_mm(X, step_f, Z, U, prox_g, step_g, L)
     else:
         M = len(prox_g)
         dX = np.sum([step_f/step_g[i] * L[i].T.dot(L[i].dot(X) - Z[i] + U[i]) for i in range(M)], axis=0)
-        X_ = prox_f(X - dX, step_f)
-        LX_ = [None] * M
-        Z_ = [None] * M
+        X[:] = prox_f(X - dX, step_f)
+        LX = [None] * M
+        R = [None] * M
+        S = [None] * M
         for i in range(M):
-            LX_[i], Z_[i], U[i] = do_the_mm(X_, U[i], prox_g[i], step_g[i], L[i])
-    return X_ ,Z_, U, LX_
+            LX[i], R[i], S[i] = do_the_mm(X, step_f, Z[i], U[i], prox_g[i], step_g[i], L[i])
+    return LX, R, S
 
 def get_variable_errors(L, LX, Z, U, e_rel):
     """Get the errors in a single multiplier method step
@@ -110,35 +146,33 @@ def get_variable_errors(L, LX, Z, U, e_rel):
     calculate the errors in the prime and dual variables, used by the
     Boyd 2011 Section 3 stopping criteria.
     """
-    e_pri2 = e_rel**2*np.max([l2sq(LX), l2sq(Z), 1])
+    e_pri2 = e_rel**2*np.max([l2sq(LX), l2sq(Z)])
     e_dual2 = e_rel**2*l2sq(L.T.dot(U))
     return e_pri2, e_dual2
 
-def check_constraint_convergence(step_f, step_g, X, LX, Z_, Z, U, L, e_rel):
+def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
     """Calculate if all constraints have converged.
 
     Using the stopping criteria from Boyd 2011, Sec 3.3.1, calculate whether the
     variables for each constraint have converged.
     """
 
-    if hasattr(step_g, "__iter__"):
-        M = len(step_g)
+    if isinstance(L, list):
+        M = len(L)
         convergence = True
         errors = []
         # recursive call
         for i in range(M):
-            c, e = check_constraint_convergence(step_f, step_g[i], X, LX[i], Z_[i], Z[i], U[i], L[i], e_rel)
+            c, e = check_constraint_convergence(L[i], LX[i], Z[i], U[i], R[i], S[i], e_rel)
             convergence &= c
             errors.append(e)
         return convergence, errors
     else:
-        # compute prime residual rk and dual residual sk
-        R = LX - Z_
-        S = -step_f/step_g * L.T.dot(Z_ - Z)
-        e_pri2, e_dual2 = get_variable_errors(L, LX, Z_, U, e_rel)
+        # check convergence of prime residual R and dual residual S
+        e_pri2, e_dual2 = get_variable_errors(L, LX, Z, U, e_rel)
         lR2 = l2sq(R)
         lS2 = l2sq(S)
-        convergence = (lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) & (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2))
+        convergence = (lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2))
         return convergence, (e_pri2, e_dual2, lR2, lS2)
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):

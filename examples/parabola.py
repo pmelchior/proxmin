@@ -93,7 +93,7 @@ def steps_f12(j=None, Xs=None):
         L = 2
     else:
         L = 2
-    slack = 0.5
+    slack = 1.
     return slack / L
 
 
@@ -164,13 +164,13 @@ if __name__ == "__main__":
     plotResults(tr.history, "SDMM", boundary=boundary)
 
     # GLMM
-    N = 2
-    XY = [np.array([xy[0]]), np.array([xy[1]])]
-    M1 = 3
-    M2 = 7
-    # TODO: implement circle constraint for GLMM via prox_lim12 above
-    proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-    steps_g = [[step_f * M1 * N] * M1, [step_f * M2 * N] * M2]
-    Ls = [[L for i in range(M1)], [L for i in range(M2)]]
-    x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "GLMM", boundary=boundary)
+    if boundary == "line":
+        N = 2
+        XY = [np.array([xy[0]]), np.array([xy[1]])]
+        M1 = 1
+        M2 = 1
+        proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
+        steps_g = [[step_f * M1 * N] * M1, [step_f * M2 * N] * M2]
+        Ls = [[L for i in range(M1)], [L for i in range(M2)]]
+        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, traceback=True)
+        plotResults(tr.history, "GLMM", boundary=boundary)
