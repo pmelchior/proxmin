@@ -37,9 +37,13 @@ def match(A, S, trueS):
 	for i in range(k):
 		for j in range(k):
 			corr[i][j] = cov[i + k][j]/np.sqrt(cov[i + k][i + k]*cov[j][j])
-	arrangment = linear_sum_assignment(-corr)[1]
-	resS = np.array([S[arrangment[i]] for i in range(k)])
-	resA = np.array([[A[i][arrangment[j]] for j in range(A.shape[1])] for i in range(A.shape[0])])
+	arrangement = linear_sum_assignment(-corr)
+	resS = np.zeros_like(S)
+	resA = np.zeros_like(A)
+	for t in range(k):
+		resS[arrangement[1][t]] = S[arrangement[0][t]]
+		for i in range(A.shape[0]):
+			resA[i][arrangement[1][t]] = resA[i][arrangement[0][t]]
 	return resA, resS
 
 def l2sq(X):
