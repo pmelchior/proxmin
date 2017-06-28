@@ -9,15 +9,15 @@ logging.basicConfig()
 logger = logging.getLogger("proxmin.nmf")
 
 def delta_data(A, S, Y, W=1):
-    return W*(np.dot(A,S) - Y)
+    return W*(A.dot(S) - Y)
 
 def grad_likelihood_A(A, S, Y, W=1):
     D = delta_data(A, S, Y, W=W)
-    return np.dot(D, S.T)
+    return D.dot(S.T)
 
 def grad_likelihood_S(S, A, Y, W=1):
     D = delta_data(A, S, Y, W=W)
-    return np.dot(A.T, D)
+    return A.T.dot(D)
 
 # executes one proximal step of likelihood gradient, followed by prox_g
 def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1):
@@ -37,9 +37,9 @@ def steps_AS(Xs=None, j=None, Wmax=1):
         L = utils.get_spectral_norm(Xs[1].T) * Wmax  # ||S*S.T||
     else:
         L = utils.get_spectral_norm(Xs[0]) * Wmax # ||A.T * A||
-    return 1./L
+    return 0.5/L
 
-def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None, l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3, traceback=False):
+def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None, l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3, traceback=False, steps_g=None):
 
     # for S: use non-negative or sparsity constraints directly
     from functools import partial
@@ -51,11 +51,12 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
         if l0_thresh is not None:
             if l1_thresh is not None:
                 logger.warn("Warning: l1_thresh ignored in favor of l0_thresh")
-            prox_S = partial(operators.prox_hard, l=l0_thresh)
+            prox_S = partial(operators.prox_hard, thresh=l0_thresh)
         elif l1_thresh is not None:
             prox_S = partial(operators.prox_soft_plus, l=l1_thresh)
         else:
             prox_S = operators.prox_plus
+    print(prox_S)
 
     # get max of W
     if W is not None:
@@ -71,12 +72,13 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
     # set step sizes and Ls to None
     if proxs_g is None:
         proxs_g = [[operators.prox_id]] * N
-    steps_g = [[None]] * N
+    if steps_g is None:
+        steps_g = [[None]] * N
     if Ls is None:
         Ls = [[None]] * N
 
     Xs = [A0.copy(), S0.copy()]
-    res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
+    res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, e_rel=e_rel, traceback=traceback, min_iter=min_iter)
 
     if not traceback:
         return res[0], res[1]
