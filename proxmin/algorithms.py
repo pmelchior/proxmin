@@ -334,8 +334,8 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10, 
 
                     # re-init
                     it = 0
-                    X[j],Z[j],U[j]  = utils.initXZU(X0, _L[j])
-                    logger.warning("Restarting with step_f[%d] = %.3f" % (j,step_f[j]*slack[j]))
+                    X[j],Z[j],U[j]  = utils.initXZU(X0s[j], _L[j])
+                    logger.warning("Restarting with step_f[%d] = %.3f" % (j,steps_f[j]*slack[j]))
         R_ = R
         X_ = [X[j].copy() for j in range(N)]
 
