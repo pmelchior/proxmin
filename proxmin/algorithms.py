@@ -339,7 +339,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10, 
         R_ = R
         X_ = [X[j].copy() for j in range(N)]
 
-    if it+1 == max_iter:
+    if it+1 >= max_iter:
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
 

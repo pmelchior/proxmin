@@ -76,7 +76,7 @@ def get_spectral_norm(L):
         # need spectral norm of L
         import scipy.sparse
         if scipy.sparse.issparse(L):
-            if min(L.L.shape) <= 2:
+            if min(L.shape) <= 2:
                 L2 = np.linalg.eigvals(LTL.toarray()).max()
             else:
                 import scipy.sparse.linalg
