@@ -77,12 +77,12 @@ def get_spectral_norm(L):
         import scipy.sparse
         if scipy.sparse.issparse(L):
             if min(L.shape) <= 2:
-                L2 = np.linalg.eigvals(LTL.toarray()).max()
+                L2 = np.real(np.linalg.eigvals(LTL.toarray()).max())
             else:
                 import scipy.sparse.linalg
                 L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
         else:
-            L2 = np.linalg.eigvals(LTL).max()
+            L2 = np.real(np.linalg.eigvals(LTL).max())
         return L2
 
 def get_step_g(step_f, norm_L2, step_g=None, N=1, M=1):

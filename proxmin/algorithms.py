@@ -233,7 +233,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
 
 
 def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
-         max_iter=1000, e_rel=1e-6, traceback=False):
+         max_iter=1000, e_rel=1e-6, traceback=False, norm_L2=None):
     """General Linearized Method of Multipliers.
 
     TODO: proxs_f must have signature prox(X,step, j=None, Xs=None)
@@ -272,8 +272,14 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
     steps_g_ = [[[None] for i in range(M[j])] for j in range(N)]
 
     # use matrix adapters
-    _L = [[ utils.MatrixOrNone(Ls[j][i]) for i in range(M[j])] for j in range(N)]
-    norm_L2 = [[ utils.get_spectral_norm(_L[j][i].L) for i in range(M[j])] for j in range(N)]
+    _L = [[ utils.MatrixOrNone(Ls[n][m]) for m in range(M[n])] for n in range(N)]
+    if norm_L2 is None:
+        norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[j])] for n in range(N)]
+    else:
+        for n in range(len(norm_L2)):
+            for m in range(len(norm_L2[n])):
+                if norm_L2[n][m] is None:
+                    norm_L2[n][m] = utils.get_spectral_norm(_L[n][m].L)
 
     # Initialization
     X, Z, U = [],[],[]

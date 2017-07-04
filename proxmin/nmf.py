@@ -42,7 +42,7 @@ def steps_AS(Xs=None, j=None, Wmax=1):
 
 def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None,
         l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3,
-        traceback=False, steps_g=None):
+        traceback=False, steps_g=None, norm_L2=None):
 
     # for S: use non-negative or sparsity constraints directly
     from functools import partial
@@ -81,7 +81,7 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
 
     Xs = [A0.copy(), S0.copy()]
     res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter,
-                          e_rel=e_rel, traceback=traceback, min_iter=min_iter)
+                          e_rel=e_rel, traceback=traceback, min_iter=min_iter, norm_L2=norm_L2)
 
     if not traceback:
         return res[0], res[1]
