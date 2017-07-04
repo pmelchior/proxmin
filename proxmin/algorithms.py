@@ -317,7 +317,8 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10, 
 
         # store current state and errors
         if traceback:
-            history.append([X[j].copy() for j in range(N)])
+            history.append([[X[j].copy(), [(Z[j][n].copy(),  U[j][n].copy()) for n in range(len(Z[j]))]]
+                            for j in range(N)])
             all_errors.append(errors)
 
         if all(convergence):#3 and it >= min_iter:
