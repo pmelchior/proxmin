@@ -99,7 +99,8 @@ def get_step_g(step_f, norm_L2, step_g=None, N=1, M=1):
     if step_g is None:
         return step_f * norm_L2 * N * M
     else:
-        logger.warning("step_g / norm_L2 < step_f N M")
+        if step_g/norm_L2 < step_f * N * M:
+            logger.warning("step_g / norm_L2 < step_f N M")
         return step_g
 
 def get_step_f(step_f, lR2, lS2):
