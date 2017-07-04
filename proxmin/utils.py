@@ -36,7 +36,7 @@ class Traceback(object):
     def __init__(self, N, traceback=False):
         # Number of variables
         self.N = N
-        self.errors = []*N
+        self.errors = [None]*N
         self.history = [None]*N
 
     def __repr__(self):
@@ -46,7 +46,7 @@ class Traceback(object):
         return message
 
     def add_history(self, it, j, X, Z, U, step_f, step_g):
-        """Add a st
+        """Add the current state for all variables
         """
         # Create the history for each parameter
         if it ==0:
@@ -67,10 +67,54 @@ class Traceback(object):
             self.history[j]["U"+str(m)].append(U[m].copy())
             self.history[j]["step_g"+str(m)].append(step_g[m].copy())
 
-    def add_errors(self, it, j, err):
-        if len(self.errors[j]) != it:
-            raise Exception("Length of errors {0}: {1}>it={2}".format(j, len(self.errors[j]), it))
-        self.errors[j].append(err)
+    def add_errors(self, it, j, errors):
+        """Add the error for all variables
+        """
+        # Create the error dictionary entry for each error parameter
+        if it == 0:
+            self.errors[j] = {}
+            for m in range(len(errors)):
+                self.errors[j]["primal"+str(m)] = []
+                self.errors[j]["dual"+str(m)] = []
+                self.errors[j]["R"+str(m)] = []
+                self.errors[j]["S"+str(m)] = []
+        # Add an entry for each error parameter
+        for m in range(len(errors)):
+            self.errors[j]["primal"+str(m)].append(errors[m][0])
+            self.errors[j]["dual"+str(m)].append(errors[m][1])
+            self.errors[j]["R"+str(m)].append(errors[m][2])
+            self.errors[j]["S"+str(m)].append(errors[m][3])
+
+    def _get_item_history(self, j, key, m=None, hist_type=None):
+        """Get the history of a given parameter or error
+
+        See `get_history` and `get_errors` for a description of j, key, m.
+
+        Parameters
+        ----------
+        hist_type: string, optional
+            The type of history to load (either "history" or "errors").
+
+        Returns
+        -------
+        result: np.array
+            History of the specified parameter.
+        """
+        if hist_type == "history" or hist_type is None:
+            hist = self.history[j]
+        elif hist_type == "errors":
+            hist = self.errors[j]
+        else:
+            raise ValueError("Expected either hist_type='history', hist_type='errors' or hist_type=None)")
+        if key not in hist.keys():
+            if key+"0" in hist.keys():
+                m = 0
+            else:
+                raise ValueError("Parameter {0} not recognized".format(key))
+        if m is None:
+            return np.array(hist[key])
+        else:
+            return np.array(hist[key+str(m)])
 
     def get_history(self, j, key=None, m=None):
         """Get the history of a given parameter
@@ -79,14 +123,14 @@ class Traceback(object):
         ----------
         j: int
             Index of the variable `X_j`, where `j` is the index in `X`.
-        key: str
+        key: str, optional
             Name of the key in the history dictionary.
             This should be either "X", "Z", "U", "step_f", "step_g", or ``None``.
             If `key` is ``None`` then the dictionary with all of the variable histories
             is returned
-        m: int
-            Index of the constraint. This only applies to "Z", "U", and "step_g", otherwise
-            a ``ValueError`` will be raised.
+        m: int, optional
+            Index of the constraint. This only applies to "Z", "U", and "step_g".
+            If m is not specified, then the first constraint (``0``) is used.
 
         Returns
         -------
@@ -96,19 +140,39 @@ class Traceback(object):
             for parameter ``key``.
         """
         if key is not None:
-            if m is None:
-                try:
-                    return np.array(self.history[j][key])
-                except KeyError:
-                    if key in ["Z", "U", "step_g"]:
-                        raise ValueError("Parameter {0} requires an index 'm'".format(key))
-                    else:
-                        raise ValueError("Parameter {0} not recognized".format(key))
-            elif key not in ["X", "step_f"]:
-                return np.array(self.history[j][key+str(m)])
-            else:
-                raise ValueError("Key {0} only has one value, you specified item m={1}".format(key, m))
-        return {k: np.array(v) for k,v in self.history[j].items()}
+            return self._get_item_history(j, key, m, hist_type="history")
+        else:
+            return {k: np.array(v) for k,v in self.history[j].items()}
+
+    
+
+    def get_errors(self, j, key=None, m=None):
+        """Get the errors for a given parameter
+        
+        Parameters
+        ----------
+        j: int
+            Index of the variable `X_j`, where `j` is the index in `X`.
+        key: str, optional
+            Name of the key in the history dictionary.
+            This should be either "primal", "dual", "R", "S", or ``None``.
+            If `key` is ``None`` then the dictionary with all of the variable errors
+            is returned.
+        m: int, optional
+            Index of the constraint.
+            If m is not specified, then the first constraint (``0``) is used.
+
+        Returns
+        -------
+        result:
+            This is a dictionary with the history of all errors for variable ``X_j`` if
+            ``key`` is ``None``, otherwise the result is an numpy array that contains the history
+            for error ``key``.
+        """
+        if key is not None:
+            return self._get_item_history(j, key, m, hist_type="errors")
+        else:
+            return {k: np.array(v) for k,v in self.errors[j].items()}
 
 def initXZU(X0, L):
     X = X0.copy()

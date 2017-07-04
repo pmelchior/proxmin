@@ -290,7 +290,6 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
         Z.append(Zj)
         U.append(Uj)
     # containers
-    all_errors = [None]
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
 
@@ -316,6 +315,8 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j],
                                                                            R[j], S[j], e_rel[j])
+            if traceback:
+                tr.add_errors(it, j, errors[j])
 
             # TODO: do we need a X - X_ convergence criterion?
             # If so, we need X_ above
@@ -328,10 +329,6 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
                 iter_norms.append(norms)
                 likelihood_convergence.append(convergence)
             """
-
-        # store current state and errors
-        if traceback:
-            all_errors.append(errors)
 
         if all(convergence):#3 and it >= min_iter:
             break
