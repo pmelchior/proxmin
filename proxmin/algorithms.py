@@ -290,12 +290,13 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
         Z.append(Zj)
         U.append(Uj)
     # containers
-    history = [[X[j].copy() for j in range(N)]]
     all_errors = [None]
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
 
     it = 0
+    if traceback:
+        tr = utils.Traceback(N, traceback)
     while it < max_iter:
 
         # get compatible step sizes for f and g
@@ -304,6 +305,9 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
             for i in range(M[j]):
                 steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i],
                                                   N=N, M=M[j])
+            # (optionally) store current state before update
+            if traceback:
+                tr.add_history(it, j, X[j], Z[j], U[j], steps_f[j], steps_g_[j])
 
             # update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
@@ -327,8 +331,6 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
 
         # store current state and errors
         if traceback:
-            history.append([[X[j].copy(), [(Z[j][n].copy(),  U[j][n].copy()) for n in range(len(Z[j]))]]
-                            for j in range(N)])
             all_errors.append(errors)
 
         if all(convergence):#3 and it >= min_iter:
@@ -357,5 +359,4 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
     if not traceback:
         return X
     else:
-        tr = utils.Traceback(it=it, Z=Z, U=U, errors=all_errors, history=history)
         return X, tr

@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 import logging
+
 import numpy as np
 
 logging.basicConfig()
@@ -32,18 +33,82 @@ class MatrixOrNone(object):
 class Traceback(object):
     """Container structure for traceback of algorithm behavior.
     """
-    def __init__(self, it=None, Z=None, U=None, errors=None, history=None):
-        self.it = it
-        self.Z = Z
-        self.U = U
-        self.errors = errors
-        self.history = history
+    def __init__(self, N, traceback=False):
+        # Number of variables
+        self.N = N
+        self.errors = []*N
+        self.history = [None]*N
 
     def __repr__(self):
         message = "Traceback:\n"
-        for k,v in self.__dict__.iteritems():
+        for k,v in self.__dict__.items():
             message += "\t%s: %r\n" % (k,v)
         return message
+
+    def add_history(self, it, j, X, Z, U, step_f, step_g):
+        """Add a st
+        """
+        # Create the history for each parameter
+        if it ==0:
+            self.history[j] = {}
+            self.history[j]["X"] = []
+            self.history[j]["step_f"] = []
+            for m in range(len(Z)):
+                self.history[j]["Z"+str(m)] = []
+                self.history[j]["U"+str(m)] = []
+                self.history[j]["step_g"+str(m)] = []
+        elif np.any([len(v)!=it for k,v in self.history[j].items()]):
+            raise Exception("Unexpected iteration count it={0}, something went wrong with history".format(it))
+        # Add history for each parameter
+        self.history[j]["X"].append(X.copy())
+        self.history[j]["step_f"].append(step_f)
+        for m in range(len(Z)):
+            self.history[j]["Z"+str(m)].append(Z[m].copy())
+            self.history[j]["U"+str(m)].append(U[m].copy())
+            self.history[j]["step_g"+str(m)].append(step_g[m].copy())
+
+    def add_errors(self, it, j, err):
+        if len(self.errors[j]) != it:
+            raise Exception("Length of errors {0}: {1}>it={2}".format(j, len(self.errors[j]), it))
+        self.errors[j].append(err)
+
+    def get_history(self, j, key=None, m=None):
+        """Get the history of a given parameter
+        
+        Parameters
+        ----------
+        j: int
+            Index of the variable `X_j`, where `j` is the index in `X`.
+        key: str
+            Name of the key in the history dictionary.
+            This should be either "X", "Z", "U", "step_f", "step_g", or ``None``.
+            If `key` is ``None`` then the dictionary with all of the variable histories
+            is returned
+        m: int
+            Index of the constraint. This only applies to "Z", "U", and "step_g", otherwise
+            a ``ValueError`` will be raised.
+
+        Returns
+        -------
+        result:
+            This is a dictionary with the history of all parameters for variable ``X_j`` if
+            ``key`` is ``None``, otherwise the result is a numpy array that contains the history
+            for parameter ``key``.
+        """
+        if key is not None:
+            if m is None:
+                try:
+                    return np.array(self.history[j][key])
+                except KeyError:
+                    if key in ["Z", "U", "step_g"]:
+                        raise ValueError("Parameter {0} requires an index 'm'".format(key))
+                    else:
+                        raise ValueError("Parameter {0} not recognized".format(key))
+            elif key not in ["X", "step_f"]:
+                return np.array(self.history[j][key+str(m)])
+            else:
+                raise ValueError("Key {0} only has one value, you specified item m={1}".format(key, m))
+        return {k: np.array(v) for k,v in self.history[j].items()}
 
 def initXZU(X0, L):
     X = X0.copy()
@@ -181,7 +246,8 @@ def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
         e_pri2, e_dual2 = get_variable_errors(L, LX, Z, U, e_rel)
         lR2 = l2sq(R)
         lS2 = l2sq(S)
-        convergence = (lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2))
+        convergence = ((lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and 
+                       (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2)))
         return convergence, (e_pri2, e_dual2, lR2, lS2)
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
