@@ -232,7 +232,8 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
         return X, tr
 
 
-def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10, max_iter=1000, e_rel=1e-6, traceback=False):
+def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
+         max_iter=1000, e_rel=1e-6, traceback=False):
     """General Linearized Method of Multipliers.
 
     TODO: proxs_f must have signature prox(X,step, j=None, Xs=None)
@@ -295,13 +296,16 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10, 
         for j in range(N):
             steps_f[j] = steps_f_cb(j=j, Xs=X) * slack[j]
             for i in range(M[j]):
-                steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i], N=N, M=M[j])
+                steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i],
+                                                  N=N, M=M[j])
 
             # update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
-            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
+            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j],
+                                                       proxs_g[j], steps_g_[j], _L[j])
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
+            convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j],
+                                                                           R[j], S[j], e_rel[j])
 
             # TODO: do we need a X - X_ convergence criterion?
             # If so, we need X_ above
