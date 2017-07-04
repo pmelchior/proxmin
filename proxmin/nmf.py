@@ -59,7 +59,6 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
             prox_S = partial(operators.prox_soft_plus, l=l1_thresh)
         else:
             prox_S = operators.prox_plus
-    print(prox_S)
 
     # get max of W
     if W is not None:
