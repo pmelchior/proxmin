@@ -26,7 +26,8 @@ def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1):
 def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=1):
     return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W), step)
 
-def prox_likelihood(X, step, Xs=None, j=None, Y=None, W=None, prox_S=operators.prox_id, prox_A=operators.prox_id):
+def prox_likelihood(X, step, Xs=None, j=None, Y=None, W=None,
+                    prox_S=operators.prox_id, prox_A=operators.prox_id):
     if j == 0:
         return prox_likelihood_A(X, step, S=Xs[1], Y=Y, prox_g=prox_A, W=W)
     else:
@@ -39,7 +40,9 @@ def steps_AS(Xs=None, j=None, Wmax=1):
         L = utils.get_spectral_norm(Xs[0]) * Wmax # ||A.T * A||
     return 0.5/L
 
-def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None, l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3, traceback=False, steps_g=None):
+def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None,
+        l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3,
+        traceback=False, steps_g=None):
 
     # for S: use non-negative or sparsity constraints directly
     from functools import partial
@@ -78,7 +81,8 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
         Ls = [[None]] * N
 
     Xs = [A0.copy(), S0.copy()]
-    res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, e_rel=e_rel, traceback=traceback, min_iter=min_iter)
+    res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter,
+                          e_rel=e_rel, traceback=traceback, min_iter=min_iter)
 
     if not traceback:
         return res[0], res[1]
