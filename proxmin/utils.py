@@ -33,146 +33,96 @@ class MatrixOrNone(object):
 class Traceback(object):
     """Container structure for traceback of algorithm behavior.
     """
-    def __init__(self, N, traceback=False):
+    def __init__(self, N, **kwargs):
+        self.it = 0
+        # offset is used when the iteration counter is reset
+        # so that the number of iterations can be used to make sure that
+        # all of the variables are being updated properly
+        self.offset = 0
         # Number of variables
         self.N = N
-        self.errors = [None]*N
-        self.history = [None]*N
+        self.history = [{} for n in range(N)]
+        # Add any additional parameters needed to check the history
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
     def __repr__(self):
         message = "Traceback:\n"
         for k,v in self.__dict__.items():
             message += "\t%s: %r\n" % (k,v)
         return message
-
-    def add_history(self, it, j, X, Z, U, step_f, step_g):
-        """Add the current state for all variables
-        """
-        # Create the history for each parameter
-        if it ==0:
-            self.history[j] = {}
-            self.history[j]["X"] = []
-            self.history[j]["step_f"] = []
-            for m in range(len(Z)):
-                self.history[j]["Z"+str(m)] = []
-                self.history[j]["U"+str(m)] = []
-                self.history[j]["step_g"+str(m)] = []
-        elif np.any([len(v)!=it for k,v in self.history[j].items()]):
-            raise Exception("Unexpected iteration count it={0}, something went wrong with history".format(it))
-        # Add history for each parameter
-        self.history[j]["X"].append(X.copy())
-        self.history[j]["step_f"].append(step_f)
-        for m in range(len(Z)):
-            self.history[j]["Z"+str(m)].append(Z[m].copy())
-            self.history[j]["U"+str(m)].append(U[m].copy())
-            self.history[j]["step_g"+str(m)].append(step_g[m].copy())
-
-    def add_errors(self, it, j, errors):
-        """Add the error for all variables
-        """
-        # Create the error dictionary entry for each error parameter
-        if it == 0:
-            self.errors[j] = {}
-            for m in range(len(errors)):
-                self.errors[j]["primal"+str(m)] = []
-                self.errors[j]["dual"+str(m)] = []
-                self.errors[j]["R"+str(m)] = []
-                self.errors[j]["S"+str(m)] = []
-        # Add an entry for each error parameter
-        for m in range(len(errors)):
-            self.errors[j]["primal"+str(m)].append(errors[m][0])
-            self.errors[j]["dual"+str(m)].append(errors[m][1])
-            self.errors[j]["R"+str(m)].append(errors[m][2])
-            self.errors[j]["S"+str(m)].append(errors[m][3])
-
-    def _get_item_history(self, j, key, m=None, hist_type=None):
-        """Get the history of a given parameter or error
-
-        See `get_history` and `get_errors` for a description of j, key, m.
-
-        Parameters
-        ----------
-        hist_type: string, optional
-            The type of history to load (either "history" or "errors").
-
-        Returns
-        -------
-        result: np.array
-            History of the specified parameter.
-        """
-        if hist_type == "history" or hist_type is None:
-            hist = self.history[j]
-        elif hist_type == "errors":
-            hist = self.errors[j]
-        else:
-            raise ValueError("Expected either hist_type='history', hist_type='errors' or hist_type=None)")
-        if key not in hist.keys():
-            if key+"0" in hist.keys():
-                m = 0
-            else:
-                raise ValueError("Parameter {0} not recognized".format(key))
-        if m is None:
-            return np.array(hist[key])
-        else:
-            return np.array(hist[key+str(m)])
-
-    def get_history(self, j, key=None, m=None):
-        """Get the history of a given parameter
-        
-        Parameters
-        ----------
-        j: int
-            Index of the variable `X_j`, where `j` is the index in `X`.
-        key: str, optional
-            Name of the key in the history dictionary.
-            This should be either "X", "Z", "U", "step_f", "step_g", or ``None``.
-            If `key` is ``None`` then the dictionary with all of the variable histories
-            is returned
-        m: int, optional
-            Index of the constraint. This only applies to "Z", "U", and "step_g".
-            If m is not specified, then the first constraint (``0``) is used.
-
-        Returns
-        -------
-        result:
-            This is a dictionary with the history of all parameters for variable ``X_j`` if
-            ``key`` is ``None``, otherwise the result is a numpy array that contains the history
-            for parameter ``key``.
-        """
-        if key is not None:
-            return self._get_item_history(j, key, m, hist_type="history")
-        else:
-            return {k: np.array(v) for k,v in self.history[j].items()}
-
     
-
-    def get_errors(self, j, key=None, m=None):
-        """Get the errors for a given parameter
+    def __getitem__(self, key):
+        """Get the history of a variable
         
         Parameters
         ----------
-        j: int
-            Index of the variable `X_j`, where `j` is the index in `X`.
-        key: str, optional
-            Name of the key in the history dictionary.
-            This should be either "primal", "dual", "R", "S", or ``None``.
-            If `key` is ``None`` then the dictionary with all of the variable errors
-            is returned.
-        m: int, optional
-            Index of the constraint.
-            If m is not specified, then the first constraint (``0``) is used.
-
+        key: string or tuple
+            - If key is a string it should be the name of the variable to lookup.
+            - If key is a tuple it should be of the form (k,j) or (k,j,m), where
+              `k` is the name of the variable, `j` is the index of the variable,
+              and `m` is the index of the constraint.
+              If `m` is not specified then `m=0`.
+        
         Returns
         -------
-        result:
-            This is a dictionary with the history of all errors for variable ``X_j`` if
-            ``key`` is ``None``, otherwise the result is an numpy array that contains the history
-            for error ``key``.
+        self.history[j][k][m]
         """
-        if key is not None:
-            return self._get_item_history(j, key, m, hist_type="errors")
+        if not isinstance(key, str):
+            if len(key) == 2:
+                k, j = key
+                m  = 0
+            elif len(key) == 3:
+                k, j, m = key
         else:
-            return {k: np.array(v) for k,v in self.errors[j].items()}
+            j = m = 0
+            k = key
+        return np.array(self.history[j][k][m])
+
+    def reset(self):
+        """Reset the iteration offset
+        
+        When the algorithm resets the iterations, we need to subtract the number of entries
+        in the history to enable the length counter to correctly check for the proper iteration numbers.
+        """
+        h = self.history[0]
+        self.offset = len(h[next(iter(h))][0])
+
+    def _store_variable(self, j, key, m, value):
+        """Store a copy of the variable in the history
+        """
+        if hasattr(value, 'copy'):
+            v = value.copy()
+        else:
+            v = value
+
+        self.history[j][key][m].append(v)
+
+    def update_history(self, it, j=0, M=None, **kwargs):
+        """Add the current state for all kwargs to the history
+        """
+        # Create a new entry in the history for new variables (if they don't exist)
+        if not np.any([k in self.history[j] for k in kwargs]):
+            for k in kwargs:
+                if M is None:
+                    self.history[j][k] = [[]]
+                else:
+                    self.history[j][k] = [[] for m in range(M)]
+        # Check that the variables have been updated once per iteration
+        elif np.any([[len(h)!=it+self.offset for h in self.history[j][k]] for k in kwargs.keys()]):
+            for k in kwargs.keys():
+                for n,h in enumerate(self.history[j][k]):
+                    if len(h) != it+self.offset:
+                        err_str = "At iteration {0}, {1}[{2}] already has {3} entries"
+                        raise Exception(err_str.format(it, k, n, len(h)-self.offset))
+
+        # Add the variables to the history
+        for k,v in kwargs.items():
+            if M is None:
+                self._store_variable(j, k, 0, v)
+            else:
+                for m in range(M):
+                    self._store_variable(j, k, m, v[m])
 
 def initXZU(X0, L):
     X = X0.copy()
