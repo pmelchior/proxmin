@@ -130,13 +130,13 @@ def plotResults(traj, label, boundary=None):
 if __name__ == "__main__":
     xy = np.array([-1.,-1.])
     boundary = "line" # "circle"
-    max_iter = 100
+    max_iter = 1000
 
     # step sizes and proximal operators for boundary
     step_f = steps_f12()
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
-
+    
     # PGM without boundary
     x, tr = pa.pgm(xy, prox_gradf, step_f, max_iter=max_iter, relax=1, traceback=True)
     plotResults(tr.history, "PGM no boundary")
@@ -156,11 +156,9 @@ if __name__ == "__main__":
     # SDMM
     M = 2
     proxs_g = [prox_g] * M # using same constraint several, i.e. M, times
-    #steps_g = [step_f * M for j in range(M)] # NOTE: step_g * M !!!!
-    #Ls = [L] * M
     x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
     plotResults(tr.history, "SDMM", boundary=boundary)
-
+    
     # GLMM
     if boundary == "line":
         N = 2
@@ -168,5 +166,6 @@ if __name__ == "__main__":
         M1 = 7
         M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
+        steps_g = [[step_f * M1 * N]*M1, [step_f * M2 * N]*M2]
+        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, steps_g=steps_g, max_iter=max_iter, traceback=True)
         plotResults(tr.history, "GLMM", boundary=boundary)
