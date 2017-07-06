@@ -16,15 +16,18 @@ def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=Fal
     X = X0.copy()
     Z = X0.copy()
 
-    history = []
-    for it in range(max_iter):
+    if traceback:
+        tr = utils.Traceback()
+        tr.update_history(0, X=X, Z=Z, step_f=step_f)
 
-        # Optionally store the current state
-        if traceback:
-            history.append(X)
+    for it in range(max_iter):
 
         _X = prox_f(Z, step_f)
         Z = X + relax*(_X - X)
+
+        if traceback:
+            tr.update_history(it+1, X=_X, Z=Z, step_f=step_f)
+
         # test for fixed point convergence
         if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
             X = _X
@@ -39,7 +42,6 @@ def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=Fal
     if not traceback:
         return X
     else:
-        tr = utils.Traceback(it=it, history=history)
         return X, tr
 
 
@@ -51,17 +53,21 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
     X = X0.copy()
     Z = X0.copy()
     t = 1.
-    history = []
+
+    if traceback:
+        tr = utils.Traceback()
+        tr.update_history(0, X=X, Z=Z, step_f=step_f, t=t, gamma=1.)
+
     for it in range(max_iter):
-
-        # Optionally store the current state
-        if traceback:
-            history.append(X)
-
         _X = prox_f(Z, step_f)
         t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
         gamma = 1 + (t - 1)/t_
+
+        if traceback:
+            tr.update_history(it+1, X=_X, Z=Z, step_f=step_f, t=t_, gamma=gamma)
+
         Z = X + gamma*(_X - X)
+
         # test for fixed point convergence
         if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
             X = _X
@@ -77,7 +83,6 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
     if not traceback:
         return X
     else:
-        tr = utils.Traceback(it=it, history=history)
         return X, tr
 
 
@@ -97,21 +102,23 @@ def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1
 
     # init
     X,Z,U = utils.initXZU(X0, _L)
-
-    errors = [None]
-    history = [X.copy()]
     it = 0
-    while it < max_iter:
 
+    if traceback:
+        tr = utils.Traceback()
+        tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
+                          step_f=step_f, step_g=step_g)
+
+    while it < max_iter:
         # Update the variables, return LX and primal/dual residual
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
+
+        # Optionally store the variables in the history
+        if traceback:
+            tr.update_history(it+1, X=X, Z=Z, U=U, R=R, S=S, step_f=step_f, step_g=step_g)
+
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
-
-        # store current state and errors
-        if traceback:
-            history.append(X.copy())
-            errors.append(error)
 
         if convergence:
             break
@@ -125,8 +132,12 @@ def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1
                 step_g /= 2
                 # re-init
                 it = 0
+                tr.reset()
+
                 X,Z,U  = utils.initXZU(X0, _L)
                 logger.warning("Restarting with step_f = %.3f" % step_f)
+                tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
+                                  step_f=step_f, step_g=step_g)
         R_ = R
         X_ = X.copy()
 
@@ -137,7 +148,6 @@ def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1
     if not traceback:
         return X
     else:
-        tr = utils.Traceback(it=it, Z=Z, U=U, errors=errors, history=history)
         return X, tr
 
 
@@ -186,21 +196,25 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
 
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
-    all_errors = [None]
-    history = [X.copy()]
-
     it = 0
-    while it < max_iter:
 
+    if traceback:
+        tr = utils.Traceback()
+        tr.update_history(it, X=X, step_f=step_f)
+        tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
+                          S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
+
+    while it < max_iter:
         # update the variables
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
+
+        # Optionally update the new state
+        if traceback:
+            tr.update_history(it+1, X=X, step_f=step_f)
+            tr.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
+
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, errors = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
-
-        # store current state and errors
-        if traceback:
-            history.append(X.copy())
-            all_errors.append(errors)
 
         if convergence:
             break
@@ -216,8 +230,14 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
 
                 # re-init
                 it = 0
+                tr.reset()
+
                 X,Z,U  = utils.initXZU(X0, _L)
+                tr.update_history(it, X=X, step_f=step_f)
+                tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
+                                  S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
                 logger.warning("Restarting with step_f = %.3f" % step_f)
+
         R_ = R
         X_ = X.copy()
 
@@ -228,7 +248,6 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
     if not traceback:
         return X
     else:
-        tr = utils.Traceback(it=it, Z=Z, U=U, errors=all_errors, history=history)
         return X, tr
 
 
@@ -274,7 +293,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
     # use matrix adapters
     _L = [[ utils.MatrixOrNone(Ls[n][m]) for m in range(M[n])] for n in range(N)]
     if norm_L2 is None:
-        norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[j])] for n in range(N)]
+        norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[n])] for n in range(N)]
     else:
         for n in range(len(norm_L2)):
             for m in range(len(norm_L2[n])):
@@ -290,14 +309,19 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
         Z.append(Zj)
         U.append(Uj)
     # containers
-    history = [[X[j].copy() for j in range(N)]]
-    all_errors = [None]
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
-
     it = 0
-    while it < max_iter:
 
+    if traceback:
+        tr = utils.Traceback(N)
+        for j in range(N):
+            tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
+            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
+                              R=np.zeros_like(Z[j]),
+                              S=[np.zeros_like(X[j]) for n in range(M[j])])
+
+    while it < max_iter:
         # get compatible step sizes for f and g
         for j in range(N):
             steps_f[j] = steps_f_cb(j=j, Xs=X) * slack[j]
@@ -312,9 +336,12 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j],
                                                                            R[j], S[j], e_rel[j])
+            # Optionally update the new state
+            if traceback:
+                tr.update_history(it+1, j=j, X=X[j], steps_f=steps_f[j])
+                tr.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
 
             # TODO: do we need a X - X_ convergence criterion?
-            # If so, we need X_ above
             """
             # Convergence crit from Langville 2014, section 5
             iter_norms = []
@@ -325,13 +352,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
                 likelihood_convergence.append(convergence)
             """
 
-        # store current state and errors
-        if traceback:
-            history.append([[X[j].copy(), [(Z[j][n].copy(),  U[j][n].copy()) for n in range(len(Z[j]))]]
-                            for j in range(N)])
-            all_errors.append(errors)
-
-        if all(convergence):#3 and it >= min_iter:
+        if all(convergence):# and it >= min_iter:
             break
 
         it += 1
@@ -345,8 +366,16 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
 
                     # re-init
                     it = 0
+
                     X[j],Z[j],U[j]  = utils.initXZU(X0s[j], _L[j])
                     logger.warning("Restarting with step_f[%d] = %.3f" % (j,steps_f[j]*slack[j]))
+
+                    # TODO: Traceback needs to have offset for each j!
+                    tr.reset()
+                    tr.update_history(it, X=X, step_f=step_f)
+                    tr.update_history(it, M=M[j], Z=Z, U=U, R=np.zeros_like(Z),
+                                      S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
+
         R_ = R
         X_ = [X[j].copy() for j in range(N)]
 
@@ -357,5 +386,4 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
     if not traceback:
         return X
     else:
-        tr = utils.Traceback(it=it, Z=Z, U=U, errors=all_errors, history=history)
         return X, tr
