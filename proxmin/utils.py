@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 import logging
+
 import numpy as np
 
 logging.basicConfig()
@@ -32,18 +33,100 @@ class MatrixOrNone(object):
 class Traceback(object):
     """Container structure for traceback of algorithm behavior.
     """
-    def __init__(self, it=None, Z=None, U=None, errors=None, history=None):
-        self.it = it
-        self.Z = Z
-        self.U = U
-        self.errors = errors
-        self.history = history
+    def __init__(self, N=1):
+        # offset is used when the iteration counter is reset
+        # so that the number of iterations can be used to make sure that
+        # all of the variables are being updated properly
+        self.offset = 0
+        # Number of variables
+        self.N = N
+        self.history = [{} for n in range(N)]
 
     def __repr__(self):
         message = "Traceback:\n"
-        for k,v in self.__dict__.iteritems():
+        for k,v in self.__dict__.items():
             message += "\t%s: %r\n" % (k,v)
         return message
+
+    def __len__(self):
+        h = self.history[0]
+        return len(h[next(iter(h))][0])
+
+    @property
+    def it(self):
+        # number of iterations since last reset, minus initialization record
+        return self.__len__() - self.offset - 1
+
+    def __getitem__(self, key):
+        """Get the history of a variable
+
+        Parameters
+        ----------
+        key: string or tuple
+            - If key is a string it should be the name of the variable to lookup.
+            - If key is a tuple it should be of the form (k,j) or (k,j,m), where
+              `k` is the name of the variable, `j` is the index of the variable,
+              and `m` is the index of the constraint.
+              If `m` is not specified then `m=0`.
+
+        Returns
+        -------
+        self.history[j][k][m]
+        """
+        if not isinstance(key, str):
+            if len(key) == 2:
+                k, j = key
+                m  = 0
+            elif len(key) == 3:
+                k, j, m = key
+        else:
+            j = m = 0
+            k = key
+        return np.array(self.history[j][k][m])
+
+    def reset(self):
+        """Reset the iteration offset
+
+        When the algorithm resets the iterations, we need to subtract the number of entries
+        in the history to enable the length counter to correctly check for the proper iteration numbers.
+        """
+        self.offset = self.__len__()
+
+    def _store_variable(self, j, key, m, value):
+        """Store a copy of the variable in the history
+        """
+        if hasattr(value, 'copy'):
+            v = value.copy()
+        else:
+            v = value
+
+        self.history[j][key][m].append(v)
+
+    def update_history(self, it, j=0, M=None, **kwargs):
+        """Add the current state for all kwargs to the history
+        """
+        # Create a new entry in the history for new variables (if they don't exist)
+        if not np.any([k in self.history[j] for k in kwargs]):
+            for k in kwargs:
+                if M is None:
+                    self.history[j][k] = [[]]
+                else:
+                    self.history[j][k] = [[] for m in range(M)]
+        # Check that the variables have been updated once per iteration
+        elif np.any([[len(h)!=it+self.offset for h in self.history[j][k]] for k in kwargs.keys()]):
+            for k in kwargs.keys():
+                for n,h in enumerate(self.history[j][k]):
+                    if len(h) != it+self.offset:
+                        err_str = "At iteration {0}, {1}[{2}] already has {3} entries"
+                        raise Exception(err_str.format(it, k, n, len(h)-self.offset))
+
+        # Add the variables to the history
+        for k,v in kwargs.items():
+            if M is None:
+                self._store_variable(j, k, 0, v)
+            else:
+                for m in range(M):
+                    self._store_variable(j, k, m, v[m])
 
 def initXZU(X0, L):
     X = X0.copy()
@@ -77,12 +160,12 @@ def get_spectral_norm(L):
         import scipy.sparse
         if scipy.sparse.issparse(L):
             if min(L.shape) <= 2:
-                L2 = np.linalg.eigvals(LTL.toarray()).max()
+                L2 = np.real(np.linalg.eigvals(LTL.toarray()).max())
             else:
                 import scipy.sparse.linalg
                 L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
         else:
-            L2 = np.linalg.eigvals(LTL).max()
+            L2 = np.real(np.linalg.eigvals(LTL).max())
         return L2
 
 def get_step_g(step_f, norm_L2, step_g=None, N=1, M=1):
@@ -99,7 +182,8 @@ def get_step_g(step_f, norm_L2, step_g=None, N=1, M=1):
     if step_g is None:
         return step_f * norm_L2 * N * M
     else:
-        logger.warning("step_g / norm_L2 < step_f N M")
+        if step_g/norm_L2 < step_f * N * M:
+            logger.warning("step_g / norm_L2 < step_f N M")
         return step_g
 
 def get_step_f(step_f, lR2, lS2):
@@ -180,7 +264,8 @@ def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
         e_pri2, e_dual2 = get_variable_errors(L, LX, Z, U, e_rel)
         lR2 = l2sq(R)
         lS2 = l2sq(S)
-        convergence = (lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2))
+        convergence = ((lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and
+                       (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2)))
         return convergence, (e_pri2, e_dual2, lR2, lS2)
 
 def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):

@@ -1,6 +1,9 @@
-from proxmin import algorithms as pa, proximal as pp
+import sys
 from functools import partial
+
 import numpy as np
+
+from proxmin import algorithms as pa
 
 def f(x,y):
     """Shifted parabola"""
@@ -97,8 +100,7 @@ def steps_f12(j=None, Xs=None):
     return slack / L
 
 
-def plotResults(traj, label, boundary=None):
-    print (len(traj), traj[-1])
+def plotResults(tr, label, boundary=None):
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
 
@@ -107,58 +109,71 @@ def plotResults(traj, label, boundary=None):
     r = f(x,y)
     fig = plt.figure(figsize=(6,6))
     ax = fig.add_subplot(111,aspect='equal')
-    #ax.imshow(r, extent=(lims[0], lims[1], lims[0], lims[1]), cmap='Reds')
     ax.contourf(r, 20, extent=(lims[0], lims[1], lims[0], lims[1]), cmap='Reds')
-    traj = np.array(traj)
+
+    if tr.N == 1:
+        traj = tr["X"]
+    else:
+        traj = np.dstack([tr["X",j] for j in range(tr.N)])[:,0,:]
+
     #ax.scatter(traj[:,0], traj[:,1], s=4, c=np.arange(1,len(traj)+1), cmap='Blues_r')
-    ax.plot(traj[:,0], traj[:,1], 'b.', markersize=4, ls='-')
+    if tr.offset == 0:
+        ax.plot(traj[:,0], traj[:,1], 'b.', markersize=4, ls='-')
+    else:
+        ax.plot(traj[:tr.offset,0], traj[:tr.offset,1], 'b.', markersize=4, ls='--')
+        ax.plot(traj[tr.offset:,0], traj[tr.offset:,1], 'b.', markersize=4, ls='-')
 
     if boundary is not None:
         if boundary == "circle":
-            circ = patches.Circle((0, 0), radius=0.5, fc="none", ec='k', ls='dashed')
+            circ = patches.Circle((0, 0), radius=0.5, fc="none", ec='k', ls='dotted')
             ax.add_artist(circ)
         if boundary == "line":
-            ax.plot(lims, [-0.75, -0.75], 'k--')
-            ax.plot([0.5,0.5], lims, 'k--')
+            ax.plot(lims, [-0.75, -0.75], 'k:')
+            ax.plot([0.5,0.5], lims, 'k:')
 
     ax.scatter(traj[-1][0], traj[-1][1], marker='x', s=30, c='r')
-    ax.text(0.05, 0.95, 'it %d: (%.3f, %.3f)' % (len(traj), traj[-1][0], traj[-1][1]), transform=ax.transAxes, color='k', ha='left', va='top')
+    ax.text(0.05, 0.95, 'it %d: (%.3f, %.3f)' % (tr.it, traj[-1][0], traj[-1][1]),
+            transform=ax.transAxes, color='k', ha='left', va='top')
     ax.set_title(label)
-    fig.show()
-
+    plt.show()
 
 if __name__ == "__main__":
     xy = np.array([-1.,-1.])
-    boundary = "line" # "circle"
-    max_iter = 1000
+    if len(sys.argv)==2:
+        boundary = sys.argv[1]
+        if boundary not in ["line", "circle"]:
+            raise ValueError("Expected either 'line' or 'circle' as an argument")
+    else:
+        boundary = "line" # "circle"
+    max_iter = 100
 
     # step sizes and proximal operators for boundary
     step_f = steps_f12()
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
-    
+
     # PGM without boundary
     x, tr = pa.pgm(xy, prox_gradf, step_f, max_iter=max_iter, relax=1, traceback=True)
-    plotResults(tr.history, "PGM no boundary")
+    plotResults(tr, "PGM no boundary")
 
     # PGM
     x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, relax=1, traceback=True)
-    plotResults(tr.history, "PGM", boundary=boundary)
+    plotResults(tr, "PGM", boundary=boundary)
 
     # APGM
     x, tr = pa.apgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "APGM", boundary=boundary)
+    plotResults(tr, "APGM", boundary=boundary)
 
     # ADMM
     x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "ADMM", boundary=boundary)
+    plotResults(tr, "ADMM", boundary=boundary)
 
     # SDMM
     M = 2
     proxs_g = [prox_g] * M # using same constraint several, i.e. M, times
     x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "SDMM", boundary=boundary)
-    
+    plotResults(tr, "SDMM", boundary=boundary)
+
     # GLMM
     if boundary == "line":
         N = 2
@@ -166,6 +181,5 @@ if __name__ == "__main__":
         M1 = 7
         M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-        steps_g = [[step_f * M1 * N]*M1, [step_f * M2 * N]*M2]
-        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, steps_g=steps_g, max_iter=max_iter, traceback=True)
-        plotResults(tr.history, "GLMM", boundary=boundary)
+        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
+        plotResults(tr, "GLMM", boundary=boundary)
