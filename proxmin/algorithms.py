@@ -294,7 +294,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
     # use matrix adapters
     _L = [[ utils.MatrixOrNone(Ls[n][m]) for m in range(M[n])] for n in range(N)]
     if norm_L2 is None:
-        norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[j])] for n in range(N)]
+        norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[n])] for n in range(N)]
     else:
         for n in range(len(norm_L2)):
             for m in range(len(norm_L2[n])):
