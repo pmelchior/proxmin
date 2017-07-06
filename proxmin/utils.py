@@ -33,8 +33,7 @@ class MatrixOrNone(object):
 class Traceback(object):
     """Container structure for traceback of algorithm behavior.
     """
-    def __init__(self, N, **kwargs):
-        self.it = 0
+    def __init__(self, N=1):
         # offset is used when the iteration counter is reset
         # so that the number of iterations can be used to make sure that
         # all of the variables are being updated properly
@@ -42,19 +41,25 @@ class Traceback(object):
         # Number of variables
         self.N = N
         self.history = [{} for n in range(N)]
-        # Add any additional parameters needed to check the history
-        for k, v in kwargs.items():
-            setattr(self, k, v)
 
     def __repr__(self):
         message = "Traceback:\n"
         for k,v in self.__dict__.items():
             message += "\t%s: %r\n" % (k,v)
         return message
-    
+
+    def __len__(self):
+        h = self.history[0]
+        return len(h[next(iter(h))][0])
+
+    @property
+    def it(self):
+        # number of iterations since last reset, minus initialization record
+        return self.__len__() - self.offset - 1
+
     def __getitem__(self, key):
         """Get the history of a variable
-        
+
         Parameters
         ----------
         key: string or tuple
@@ -63,7 +68,7 @@ class Traceback(object):
               `k` is the name of the variable, `j` is the index of the variable,
               and `m` is the index of the constraint.
               If `m` is not specified then `m=0`.
-        
+
         Returns
         -------
         self.history[j][k][m]
@@ -81,12 +86,11 @@ class Traceback(object):
 
     def reset(self):
         """Reset the iteration offset
-        
+
         When the algorithm resets the iterations, we need to subtract the number of entries
         in the history to enable the length counter to correctly check for the proper iteration numbers.
         """
-        h = self.history[0]
-        self.offset = len(h[next(iter(h))][0])
+        self.offset = self.__len__()
 
     def _store_variable(self, j, key, m, value):
         """Store a copy of the variable in the history
@@ -260,7 +264,7 @@ def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
         e_pri2, e_dual2 = get_variable_errors(L, LX, Z, U, e_rel)
         lR2 = l2sq(R)
         lS2 = l2sq(S)
-        convergence = ((lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and 
+        convergence = ((lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and
                        (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2)))
         return convergence, (e_pri2, e_dual2, lR2, lS2)
 
