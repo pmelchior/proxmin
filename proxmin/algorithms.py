@@ -256,7 +256,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
     """General Linearized Method of Multipliers.
 
     TODO: proxs_f must have signature prox(X,step, j=None, Xs=None)
-    TODO: steps_f_cb(j=None, Xs=None) -> Reals
+    TODO: steps_f_cb(j, Xs) -> Reals
     """
     # Set up
     N = len(X0s)
@@ -324,7 +324,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
     while it < max_iter:
         # get compatible step sizes for f and g
         for j in range(N):
-            steps_f[j] = steps_f_cb(j=j, Xs=X) * slack[j]
+            steps_f[j] = steps_f_cb(j, X) * slack[j]
             for i in range(M[j]):
                 steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i],
                                                   N=N, M=M[j])

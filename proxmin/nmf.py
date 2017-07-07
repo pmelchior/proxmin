@@ -33,12 +33,37 @@ def prox_likelihood(X, step, Xs=None, j=None, Y=None, W=None,
     else:
         return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=W)
 
-def steps_AS(Xs=None, j=None, Wmax=1):
-    if j == 0:
-        L = utils.get_spectral_norm(Xs[1].T) * Wmax  # ||S*S.T||
-    else:
-        L = utils.get_spectral_norm(Xs[0]) * Wmax # ||A.T * A||
-    return 0.5/L
+class Steps_AS:
+    def __init__(self, slack=0.5, Wmax=1):
+        self.Wmax = Wmax
+        self.slack = slack
+        self.it = 0
+        N = 2
+        self.stride = [1] * N
+        self.last = [-1] * N
+        self.stored = [None] * 2 # last update of L
+
+    def __call__(self, j, Xs):
+        if self.it >= self.last[j] + self.stride[j]:
+            self.last[j] = self.it
+            if j == 0:
+                L = utils.get_spectral_norm(Xs[1].T) * self.Wmax  # ||S*S.T||
+            else:
+                L = utils.get_spectral_norm(Xs[0]) * self.Wmax # ||A.T * A||
+                self.it += 1 # iteration counter
+
+            # increase stride when rel. changes in L are smaller than (1-slack)/2
+            if self.it > 1:
+                rel_error = np.abs(self.stored[j] - L) / self.stored[j]
+                budget = (1-self.slack)/2
+                if rel_error < budget:
+                    self.stride[j] += max(1,int(budget/rel_error * self.stride[j]))
+            # updated last value
+            self.stored[j] = L
+        elif j == 1:
+            self.it += 1
+
+        return self.slack / self.stored[j]
 
 def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None,
         l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3,
@@ -60,15 +85,15 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
         else:
             prox_S = operators.prox_plus
 
-    # get max of W
+    # create stepsize callback, needs max of W
     if W is not None:
         Wmax = W.max()
     else:
         W = Wmax = 1
+    steps_f = Steps_AS(Wmax=Wmax)
 
-    # gradient step, followed by direct application of prox
+    # gradient step, followed by direct application of prox_S or prox_A
     f = partial(prox_likelihood, Y=Y, W=W, prox_S=prox_S, prox_A=prox_A)
-    steps_f = partial(steps_AS, Wmax=Wmax)
 
     N = 2
     # set step sizes and Ls to None
