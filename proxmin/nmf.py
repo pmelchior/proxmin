@@ -56,7 +56,7 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
                 logger.warn("Warning: l1_thresh ignored in favor of l0_thresh")
             prox_S = partial(operators.prox_hard, thresh=l0_thresh)
         elif l1_thresh is not None:
-            prox_S = partial(operators.prox_soft_plus, l=l1_thresh)
+            prox_S = partial(operators.prox_soft_plus, thresh=l1_thresh)
         else:
             prox_S = operators.prox_plus
 

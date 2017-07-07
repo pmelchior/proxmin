@@ -1,5 +1,19 @@
 import numpy as np
 
+#### CAUTION ####
+def _step_gamma(step, gamma):
+    """Update gamma parameter for use inside of continuous proximal operator.
+
+    Every proximal operator for a function with a continuous parameter,
+    e.g. gamma ||x||_1, needs to update that parameter to account for the
+    stepsize of the algorithm.
+
+    Returns:
+        gamma * step
+    """
+    return gamma * step
+#################
+
 def prox_id(X, step):
     """Identity proximal operator
     """
@@ -16,7 +30,8 @@ def prox_hard(X, step, thresh=0):
     X if X >= thresh, otherwise 0
     NOTE: modifies X in place
     """
-    below = X - thresh*step < 0
+    thresh_ = _step_gamma(step, thresh)
+    below = X - thresh_ < 0
     X[below] = 0
     return X
 
@@ -28,26 +43,29 @@ def prox_plus(X, step):
 def prox_min(X, step, thresh=0):
     """Projection onto numbers above `thresh`
     """
-    below = X - thresh*step < 0
-    X[below] = thresh*step
+    thresh_ = _step_gamma(step, thresh)
+    below = X - thresh_ < 0
+    X[below] = thresh_
     return X
 
 def prox_max(X, step, thresh=0):
     """Projection onto numbers below `thresh`
     """
-    above = X - thresh*step > 0
-    X[above] = thresh*step
+    thresh_ = _step_gamma(step, thresh)
+    above = X - thresh_ > 0
+    X[above] = thresh_
     return X
 
 def prox_soft(X, step, thresh=0):
     """Soft thresholding proximal operator
     """
-    return np.sign(X)*prox_plus(np.abs(X) - thresh*step, step)
+    thresh_ = _step_gamma(step, thresh)
+    return np.sign(X)*prox_plus(np.abs(X) - thresh_, step)
 
-def prox_soft_plus(X, step, l=0):
+def prox_soft_plus(X, step, thresh=0):
     """Soft thresholding with projection onto non-negative numbers
     """
-    return prox_plus(prox_soft(X, step, thresh=l), step)
+    return prox_plus(prox_soft(X, step, thresh=thresh), step)
 
 def prox_unity(X, step, axis=0):
     """Projection onto sum=1 along an axis
