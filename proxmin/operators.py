@@ -73,6 +73,21 @@ def prox_unity(X, step, axis=0):
     return X / np.sum(X, axis=axis, keepdims=True)
 
 def prox_unity_plus(X, step, axis=0):
-    """Non-negative Projection onto sum=1 along an axis
+    """Non-negative projection onto sum=1 along an axis
     """
     return prox_unity(prox_plus(X, step), step, axis=axis)
+
+def prox_max_entropy(X, step, gamma=1):
+    """Proximal operator for maximum entropy regularization.
+
+    g(x) = gamma \sum_i x_i ln(x_i)
+
+    has the analytical solution of gamma W(1/gamma exp((X-gamma)/gamma)), where
+    W is the Lambert W function. This would *minimize* the entropy g(x),
+    maximizing requires a few sign flips.
+    """
+    from scipy.special import lambertw
+    gamma_ = _step_gamma(step, gamma)
+    # minimize entropy: return gamma_ * np.real(lambertw(np.exp((X - gamma_) / gamma_) / gamma_))
+
+    return - gamma_ * np.real(lambertw(np.exp(-(X + gamma_) / gamma_) / -gamma_))
