@@ -77,25 +77,9 @@ class Steps_AS:
 
         return self.slack / self.stored[j]
 
-def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, steps_g=None, Ls=None,
-        l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3,
-        traceback=False, norm_L2=None):
-
-    # for S: use non-negative or sparsity constraints directly
-    from functools import partial
-    if prox_S is not None:
-        if l0_thresh is not None or l1_thresh is not None:
-            logger.warn("Warning: l0_thresh or l1_thresh ignored because prox_S is set")
-    else:
-        # L0 has preference
-        if l0_thresh is not None:
-            if l1_thresh is not None:
-                logger.warn("Warning: l1_thresh ignored in favor of l0_thresh")
-            prox_S = partial(operators.prox_hard, thresh=l0_thresh)
-        elif l1_thresh is not None:
-            prox_S = partial(operators.prox_soft_plus, thresh=l1_thresh)
-        else:
-            prox_S = operators.prox_plus
+def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus,
+        proxs_g=None, steps_g=None, Ls=None,
+        max_iter=1000, min_iter=10, e_rel=1e-3, traceback=False, norm_L2=None):
 
     # create stepsize callback, needs max of W
     if W is not None:
@@ -105,6 +89,7 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=None, proxs_g=None
     steps_f = Steps_AS(Wmax=Wmax)
 
     # gradient step, followed by direct application of prox_S or prox_A
+    from functools import partial
     f = partial(prox_likelihood, Y=Y, W=W, prox_S=prox_S, prox_A=prox_A)
 
     Xs = [A0.copy(), S0.copy()]
