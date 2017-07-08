@@ -251,7 +251,7 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
         return X, tr
 
 
-def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
+def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
          max_iter=1000, e_rel=1e-6, traceback=False, norm_L2=None):
     """General Linearized Method of Multipliers.
 
@@ -352,7 +352,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None, min_iter=10,
                 likelihood_convergence.append(convergence)
             """
 
-        if all(convergence):# and it >= min_iter:
+        if all(convergence):
             break
 
         it += 1
