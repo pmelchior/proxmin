@@ -77,9 +77,9 @@ class Steps_AS:
 
         return self.slack / self.stored[j]
 
-def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None, Ls=None,
+def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, steps_g=None, Ls=None,
         l0_thresh=None, l1_thresh=None, max_iter=1000, min_iter=10, e_rel=1e-3,
-        traceback=False, steps_g=None, norm_L2=None):
+        traceback=False, norm_L2=None):
 
     # for S: use non-negative or sparsity constraints directly
     from functools import partial
@@ -106,15 +106,6 @@ def nmf(Y, A0, S0, prox_A=operators.prox_plus, prox_S=None, proxs_g=None, W=None
 
     # gradient step, followed by direct application of prox_S or prox_A
     f = partial(prox_likelihood, Y=Y, W=W, prox_S=prox_S, prox_A=prox_A)
-
-    N = 2
-    # set step sizes and Ls to None
-    if proxs_g is None:
-        proxs_g = [[operators.prox_id]] * N
-    if steps_g is None:
-        steps_g = [[None]] * N
-    if Ls is None:
-        Ls = [[None]] * N
 
     Xs = [A0.copy(), S0.copy()]
     res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter,
