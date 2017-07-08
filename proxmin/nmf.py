@@ -78,7 +78,7 @@ class Steps_AS:
         return self.slack / self.stored[j]
 
 def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus,
-        proxs_g=None, steps_g=None, Ls=None,
+        proxs_g=None, steps_g=None, Ls=None, steps_g_update='steps_f',
         max_iter=1000, e_rel=1e-3, traceback=False):
 
     # create stepsize callback, needs max of W
@@ -92,9 +92,9 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
     from functools import partial
     f = partial(prox_likelihood, Y=Y, W=W, prox_S=prox_S, prox_A=prox_A)
 
-    Xs = [A0.copy(), S0.copy()]
+    Xs = [A0, S0]
     res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls,
-                          max_iter=max_iter, e_rel=e_rel, traceback=traceback)
+                          steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
 
     if not traceback:
         return res[0], res[1]
