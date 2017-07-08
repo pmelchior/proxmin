@@ -252,11 +252,15 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
 
 
 def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
-         max_iter=1000, e_rel=1e-6, traceback=False, norm_L2=None):
+         max_iter=1000, e_rel=1e-6, traceback=False, steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
 
-    TODO: proxs_f must have signature prox(X,step, j=None, Xs=None)
-    TODO: steps_f_cb(j, Xs) -> Reals
+    proxs_f must have signature prox(X,step, j=None, Xs=None)
+    steps_f_cb(j, Xs) -> Reals
+    steps_g_update in ['steps_f', 'fixed', 'relative']:
+        steps_f:  update steps_g as required by the most conservative limit (recommended)
+        fixed:    never updated initial value of steps_g
+        relative: update initial values of steps_g propertional to changes of steps_f
     """
     # Set up
     N = len(X0s)
@@ -267,6 +271,15 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
     steps_f = [None] * N
 
     # if steps_g / Ls are None or single: create N duplicates
+    if steps_g_update.lower() == 'steps_f':
+        if steps_g is not None:
+            logger.warning("Setting steps_g = None for update strategy 'steps_f'.")
+            steps_g = None
+    if steps_g_update.lower() in ['fixed', 'relative']:
+        if steps_g is None:
+            logger.warning("Ignoring steps_g update strategy '%s' because steps_g is None." % steps_g_update)
+            steps_g_update = 'steps_f'
+
     if not hasattr(steps_g, "__iter__"):
         steps_g = [steps_g] * N
     if not hasattr(Ls, "__iter__"):
@@ -292,13 +305,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
 
     # use matrix adapters
     _L = [[ utils.MatrixOrNone(Ls[n][m]) for m in range(M[n])] for n in range(N)]
-    if norm_L2 is None:
-        norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[n])] for n in range(N)]
-    else:
-        for n in range(len(norm_L2)):
-            for m in range(len(norm_L2[n])):
-                if norm_L2[n][m] is None:
-                    norm_L2[n][m] = utils.get_spectral_norm(_L[n][m].L)
+    norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[n])] for n in range(N)]
 
     # Initialization
     X, Z, U = [],[],[]
@@ -324,10 +331,16 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
     while it < max_iter:
         # get compatible step sizes for f and g
         for j in range(N):
-            steps_f[j] = steps_f_cb(j, X) * slack[j]
-            for i in range(M[j]):
-                steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], step_g=steps_g[j][i],
-                                                  N=N, M=M[j])
+            step_f_j = steps_f_cb(j, X) * slack[j]
+            # update steps_g relative to change of steps_f ...
+            if steps_g_update.lower() == 'relative':
+                for i in range(M[j]):
+                    steps_g[j][i] *= step_f_j / steps_f[j]
+            steps_f[j] = step_f_j
+            # ... or update them as required by the most conservative limit
+            if steps_g_update.lower() == 'steps_f':
+                for i in range(M[j]):
+                    steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], N=N, M=M[j])
 
             # update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
