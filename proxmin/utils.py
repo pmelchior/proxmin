@@ -6,21 +6,41 @@ import numpy as np
 logging.basicConfig()
 logger = logging.getLogger("proxmin.utils")
 
-class MatrixOrNone(object):
-    """Matrix adapter to deal with the absence of a matrix.
+def get_spectral_norm(L):
+    if L is None:
+        return 1
+    else: # linearized ADMM
+        LTL = L.T.dot(L)
+        # need spectral norm of L
+        import scipy.sparse
+        if scipy.sparse.issparse(L):
+            if min(L.shape) <= 2:
+                L2 = np.real(np.linalg.eigvals(LTL.toarray()).max())
+            else:
+                import scipy.sparse.linalg
+                L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
+        else:
+            L2 = np.real(np.linalg.eigvals(LTL).max())
+        return L2
+
+class MatrixAdapter(object):
+    """Matrix adapter to deal with None and per-component application.
     """
-    def __init__(self, L):
+    def __init__(self, L, axis=None):
         # prevent cascade
-        if isinstance(L, MatrixOrNone):
+        if isinstance(L, MatrixAdapter):
             self.L = L.L
+            self.axis = L.axis
         else:
             self.L = L
+            self.axis = axis
 
     @property
     def T(self):
         if self.L is None:
             return self # NOT: self.L !!!
-        return self.L.T
+        # because we need to preserve axis for dot(), create a new adapter
+        return MatrixAdapter(self.L.T, axis=self.axis)
 
     def dot(self, X):
         if self.L is None:
@@ -28,7 +48,16 @@ class MatrixOrNone(object):
              # so make sure you're not binding it to another variable
              # OK for all temporary arguments X
             return X
-        return self.L.dot(X)
+
+        if self.axis is None:
+            return self.L.dot(X)
+
+        # axis=0 is not needed because it can be done with a normal matrix
+        # dot product
+        if self.axis == 1:
+            return self.L.dot(X.flatten()).reshape(X.shape[0], -1)
+        raise NotImplementedError("MatrixAdapter.dot() is not useful with axis=0.\nUse regular matrix dot product instead!")
+
 
 class Traceback(object):
     """Container structure for traceback of algorithm behavior.
@@ -150,23 +179,6 @@ def l2(x):
     """Square root of the sum of the matrix elements squared
     """
     return np.sqrt((x**2).sum())
-
-def get_spectral_norm(L):
-    if L is None:
-        return 1
-    else: # linearized ADMM
-        LTL = L.T.dot(L)
-        # need spectral norm of L
-        import scipy.sparse
-        if scipy.sparse.issparse(L):
-            if min(L.shape) <= 2:
-                L2 = np.real(np.linalg.eigvals(LTL.toarray()).max())
-            else:
-                import scipy.sparse.linalg
-                L2 = np.real(scipy.sparse.linalg.eigs(LTL, k=1, return_eigenvectors=False)[0])
-        else:
-            L2 = np.real(np.linalg.eigvals(LTL).max())
-        return L2
 
 def get_step_g(step_f, norm_L2, N=1, M=1):
     """Get step_g compatible with step_f (and L) for ADMM, SDMM, GLMM.
