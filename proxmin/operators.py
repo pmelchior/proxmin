@@ -40,6 +40,16 @@ def prox_plus(X, step):
     """
     return prox_hard(X, step)
 
+def prox_unity(X, step, axis=0):
+    """Projection onto sum=1 along an axis
+    """
+    return X / np.sum(X, axis=axis, keepdims=True)
+
+def prox_unity_plus(X, step, axis=0):
+    """Non-negative projection onto sum=1 along an axis
+    """
+    return prox_unity(prox_plus(X, step), step, axis=axis)
+
 def prox_min(X, step, thresh=0):
     """Projection onto numbers above `thresh`
     """
@@ -56,6 +66,26 @@ def prox_max(X, step, thresh=0):
     X[above] = thresh_
     return X
 
+def prox_components(X, step, prox=None, axis=0):
+    """Split X along axis and apply prox to each chunk.
+
+    prox can be a list.
+    """
+    K = X.shape[axis]
+
+    if not hasattr(prox_list, '__iter__'):
+        prox = [prox] * K
+    assert len(prox_list) == K
+
+    if axis == 0:
+        Pk = [prox_list[k](X[k], step) for k in range(K)]
+    if axis == 1:
+        Pk = [prox_list[k](X[:,k], step) for k in range(K)]
+    return np.stack(Pk, axis=axis)
+
+
+#### Regularization function below ####
+
 def prox_soft(X, step, thresh=0):
     """Soft thresholding proximal operator
     """
@@ -66,16 +96,6 @@ def prox_soft_plus(X, step, thresh=0):
     """Soft thresholding with projection onto non-negative numbers
     """
     return prox_plus(prox_soft(X, step, thresh=thresh), step)
-
-def prox_unity(X, step, axis=0):
-    """Projection onto sum=1 along an axis
-    """
-    return X / np.sum(X, axis=axis, keepdims=True)
-
-def prox_unity_plus(X, step, axis=0):
-    """Non-negative projection onto sum=1 along an axis
-    """
-    return prox_unity(prox_plus(X, step), step, axis=axis)
 
 def prox_max_entropy(X, step, gamma=1):
     """Proximal operator for maximum entropy regularization.
