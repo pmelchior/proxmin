@@ -98,7 +98,8 @@ def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1
     # determine spectral norm of matrix
     norm_L2 = utils.get_spectral_norm(_L.L)
     # get/check compatible step size for g
-    step_g = utils.get_step_g(step_f, norm_L2, step_g=step_g)
+    if step_g is None:
+        step_g = utils.get_step_g(step_f, norm_L2)
 
     # init
     X,Z,U = utils.initXZU(X0, _L)
@@ -192,7 +193,8 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
         _L.append(utils.MatrixAdapter(Ls[i]))
         norm_L2.append(utils.get_spectral_norm(_L[i].L))
         # get/check compatible step size for g
-        steps_g[i] = utils.get_step_g(step_f, norm_L2[i], step_g=steps_g[i], M=M)
+        if steps_g[i] is None:
+            steps_g[i] = utils.get_step_g(step_f, norm_L2[i], M=M)
 
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
