@@ -168,6 +168,11 @@ if __name__ == "__main__":
     x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=True)
     plotResults(tr, "ADMM", boundary=boundary)
 
+    # ADMM with direct constraint projection
+    prox_g_direct = None
+    x, tr = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, traceback=True)
+    plotResults(tr, "ADMM direct", boundary=boundary)
+
     # SDMM
     M = 2
     proxs_g = [prox_g] * M # using same constraint several, i.e. M, times

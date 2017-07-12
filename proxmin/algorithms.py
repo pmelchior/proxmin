@@ -86,7 +86,7 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1000, traceback=False):
+def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Alternating Direction Method of Multipliers
 
@@ -98,7 +98,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1
     # determine spectral norm of matrix
     norm_L2 = utils.get_spectral_norm(_L.L)
     # get/check compatible step size for g
-    if step_g is None:
+    if prox_g is not None and step_g is None:
         step_g = utils.get_step_g(step_f, norm_L2)
 
     # init
@@ -127,20 +127,21 @@ def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1
         it += 1
 
         # if X and primal residual does not change: decrease step_f and step_g, and restart
-        if it > 1:
-            if (X == X_).all() and (R == R_).all():
-                step_f /= 2
-                step_g /= 2
-                # re-init
-                it = 0
-                tr.reset()
+        if prox_g is not None:
+            if it > 1:
+                if (X == X_).all() and (R == R_).all():
+                    step_f /= 2
+                    step_g /= 2
+                    # re-init
+                    it = 0
+                    tr.reset()
 
-                X,Z,U  = utils.initXZU(X0, _L)
-                logger.warning("Restarting with step_f = %.3f" % step_f)
-                tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
-                                  step_f=step_f, step_g=step_g)
-        R_ = R
-        X_ = X.copy()
+                    X,Z,U  = utils.initXZU(X0, _L)
+                    logger.warning("Restarting with step_f = %.3f" % step_f)
+                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
+                                      step_f=step_f, step_g=step_g)
+            R_ = R
+            X_ = X.copy()
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
@@ -152,7 +153,7 @@ def admm(X0, prox_f, step_f, prox_g, step_g=None, L=None, e_rel=1e-6, max_iter=1
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_iter=1000, traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Implement Simultaneous-Direction Method of Multipliers
 
@@ -172,8 +173,12 @@ def sdmm(X0, prox_f, step_f, proxs_g, steps_g=None, Ls=None, e_rel=1e-6, max_ite
     using an augmented Lagrangian for multiple linear constraints as given in Andreani et al. (2007).
 
     """
-    if not hasattr(proxs_g, "__iter__"):
-        proxs_g = [proxs_g]
+
+    # fall-back to simple ADMM
+    if proxs_g is None or not hasattr(proxs_g, '__iter__'):
+        return admm(X0, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
+
+    # from here on we know that proxs_g is a list
     M = len(proxs_g)
 
     # if steps_g / Ls are None or single: create M duplicates

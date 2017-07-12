@@ -222,10 +222,20 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
 
     Returns: LX, R, S
     """
-    if not isinstance(prox_g, list):
-        dX = step_f/step_g * L.T.dot(L.dot(X) - Z + U)
-        X[:] = prox_f(X - dX, step_f)
-        LX, R, S = do_the_mm(X, step_f, Z, U, prox_g, step_g, L)
+    if not hasattr(prox_g, '__iter__'):
+        if prox_g is not None:
+            dX = step_f/step_g * L.T.dot(L.dot(X) - Z + U)
+            X[:] = prox_f(X - dX, step_f)
+            LX, R, S = do_the_mm(X, step_f, Z, U, prox_g, step_g, L)
+        else:
+            # fall back to simple fixed-point method for f
+            # see do_the_mm for normal definitions of LX,Z,R,S
+            S = -X.copy()
+            Z[:] = X[:] = prox_f(X, step_f)
+            LX = X
+            R = np.zeros_like(X)
+            S += X
+
     else:
         M = len(prox_g)
         dX = np.sum([step_f/step_g[i] * L[i].T.dot(L[i].dot(X) - Z[i] + U[i]) for i in range(M)], axis=0)
