@@ -284,7 +284,7 @@ def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
                        (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2)))
         return convergence, (e_pri2, e_dual2, lR2, lS2)
 
-def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
+def check_convergence(newX, oldX, e_rel):
     """Check that the algorithm converges using Langville 2014 criteria
 
     Uses the check from Langville 2014, Section 5, to check if the NMF
@@ -295,8 +295,5 @@ def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwarg
     new_old = newX*oldX
     old2 = oldX**2
     norms = [np.sum(new_old), np.sum(old2)]
-    if history:
-        norms += [new_old, old2]
-
-    convergent = (it > min_iter) and (norms[0] >= (1-e_rel**2)*norms[1])
+    convergent = norms[0] >= (1-e_rel**2)*norms[1]
     return convergent, norms
