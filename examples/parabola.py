@@ -4,6 +4,7 @@ from functools import partial
 import numpy as np
 
 from proxmin import algorithms as pa
+dx,dy = 1, 0.5
 
 def f(x,y):
     """Shifted parabola"""
