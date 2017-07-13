@@ -1,21 +1,21 @@
-import sys
+import sys, numpy as np
 from functools import partial
-
-import numpy as np
-
 from proxmin import algorithms as pa
+
+# location of true minimum of f
+dx,dy = 1,0.5
 
 def f(x,y):
     """Shifted parabola"""
-    return (x-1)**2 + y**2
+    return (x-dx)**2 + (y-dy)**2
 
 def grad_fx(x,y):
     """Gradient of f wrt x"""
-    return 2*x - 2
+    return 2*x - 2*dx
 
 def grad_fy(x,y):
     """Gradient of f wrt y"""
-    return 2*y
+    return 2*y - 2*dy
 
 def grad_f(xy):
     """Gradient of f"""
@@ -99,10 +99,18 @@ def prox_lim12(x, step, j=None, Xs=None, boundary=None):
             return prox_xline(x, step)
         if j == 1:
             return prox_yline(x, step)
-    # this is the experimental non-separable constraint
-    if boundary == "circle":
-        return prox_circle12(x, step, j=j, Xs=Xs)
+
+    # this is the "illegal" non-separable constraint: raise exception
     raise NotImplementedError
+    """
+    if boundary == "circle":
+        if j == 0:
+            xy = np.array([x[0], Xs[1][0]])
+        if j == 1:
+            xy = np.array([Xs[0][0], x[0]])
+        return [prox_circle(xy, step)[j]]
+    """
+
 
 def prox_gradf_lim12(x, step, j=None, Xs=None, boundary=None):
     """1D projection operator"""
@@ -212,13 +220,11 @@ if __name__ == "__main__":
         M1 = 7
         M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-    else:
-        proxs_g = [[prox_circle12], [prox_circle12]]
-    x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
-    plotResults(tr, "GLMM", boundary=boundary)
+        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
+        plotResults(tr, "GLMM", boundary=boundary)
 
-    # GLMM with direct constraint projection
-    prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
-    prox_g_direct = None
-    x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
-    plotResults(tr, "GLMM direct", boundary=boundary)
+        # GLMM with direct constraint projection
+        prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
+        prox_g_direct = None
+        x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
+        plotResults(tr, "GLMM direct", boundary=boundary)
