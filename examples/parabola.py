@@ -76,13 +76,21 @@ def prox_gradf_lim(xy, step, boundary=None):
 
 # for GLMM only: x1 and x2 treated separately
 def prox_gradf12(x, step, j=None, Xs=None):
-    """1D gradient operatpr for x or y"""
+    """1D gradient operator for x or y"""
     if j == 0:
         return x - step*grad_fx(Xs[0][0], Xs[1][0])
     if j == 1:
         y = x
         return y - step*grad_fy(Xs[0][0], Xs[1][0])
     raise NotImplementedError
+
+def prox_circle12(x, step, j=None, Xs=None):
+    # this is the experimental non-separable constraint
+    if j == 0:
+        xy = np.array([x[0], Xs[1][0]])
+    if j == 1:
+        xy = np.array([Xs[0][0], x[0]])
+    return [prox_circle(xy, step)[j]]
 
 def prox_lim12(x, step, j=None, Xs=None, boundary=None):
     # separable constraints
@@ -93,12 +101,7 @@ def prox_lim12(x, step, j=None, Xs=None, boundary=None):
             return prox_yline(x, step)
     # this is the experimental non-separable constraint
     if boundary == "circle":
-        if j == 0:
-            xy = np.array([x[0], Xs[1][0]])
-        if j == 1:
-            xy = np.array([Xs[0][0], x[0]])
-        return [prox_circle(xy, step)[j]]
-
+        return prox_circle12(x, step, j=j, Xs=Xs)
     raise NotImplementedError
 
 def prox_gradf_lim12(x, step, j=None, Xs=None, boundary=None):
@@ -167,7 +170,7 @@ if __name__ == "__main__":
         if boundary not in ["line", "circle"]:
             raise ValueError("Expected either 'line' or 'circle' as an argument")
     else:
-        boundary = "line" # "circle"
+        boundary = "circle" # "circle"
     max_iter = 100
 
     # step sizes and proximal operators for boundary
@@ -203,16 +206,18 @@ if __name__ == "__main__":
     plotResults(tr, "SDMM", boundary=boundary)
 
     # GLMM
+    XY = [np.array([xy[0]]), np.array([xy[1]])]
     if boundary == "line":
         N = 2
-        XY = [np.array([xy[0]]), np.array([xy[1]])]
         M1 = 7
         M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
-        plotResults(tr, "GLMM", boundary=boundary)
+    else:
+        proxs_g = [[prox_circle12], [prox_circle12]]
+    x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
+    plotResults(tr, "GLMM", boundary=boundary)
 
-    XY = [np.array([xy[0]]), np.array([xy[1]])]
+    # GLMM with direct constraint projection
     prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
     prox_g_direct = None
     x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)

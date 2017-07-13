@@ -364,8 +364,21 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
 
             # update the variables
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
+
+            # check of prox_g has arguments to act as operator on Xs
+            proxs_g_j = []
+            if proxs_g[j] is not None:
+                for i in range(M[j]):
+                    arguments = proxs_g[j][i].func_code.co_varnames
+                    if 'Xs' in arguments and 'j' in arguments:
+                        proxs_g_j.append(partial(proxs_g[j][i], j=j, Xs=X))
+                    else:
+                        proxs_g_j.append(proxs_g[j][i])
+            else:
+                proxs_g_j = proxs_g[j]
+
             LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j],
-                                                       proxs_g[j], steps_g_[j], _L[j])
+                                                       proxs_g_j, steps_g_[j], _L[j])
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j],
                                                                            R[j], S[j], e_rel[j])
