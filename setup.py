@@ -11,13 +11,11 @@ print('Packages:', packages)
 setup(
   name = 'proxmin',
   packages = packages,
-  version = '0.0',
+  version = '0.1',
   long_description = 'General Linearized Method of Multipliers for constrained optimization',
   author = 'Fred Moolekamp and Peter Melchior',
   author_email = 'fred.moolekamp@gmail.com',
   url = 'https://github.com/fred3m/proxmin',
-  #download_url = 'https://github.com/fred3m/popper/tarball/0.1',
   keywords = ['proximal', 'minimization', 'data analysis', 'constraint'],
   include_package_data=True
-  #classifiers = [],
 )

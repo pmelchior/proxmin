@@ -1,9 +1,9 @@
-from proxmin import algorithms as pa
+import sys
 from functools import partial
+
 import numpy as np
 
-dx = 1
-dy = 0.5
+from proxmin import algorithms as pa
 
 def f(x,y):
     """Shifted parabola"""
@@ -76,7 +76,7 @@ def prox_gradf_lim(xy, step, boundary=None):
 
 # for GLMM only: x1 and x2 treated separately
 def prox_gradf12(x, step, j=None, Xs=None):
-    """1D gradient operatpr for x or y"""
+    """1D gradient operator for x or y"""
     if j == 0:
         return x - step*grad_fx(Xs[0][0], Xs[1][0])
     if j == 1:
@@ -84,68 +84,36 @@ def prox_gradf12(x, step, j=None, Xs=None):
         return y - step*grad_fy(Xs[0][0], Xs[1][0])
     raise NotImplementedError
 
-def prox_lim12(xy, step, j=None, Xs=None, boundary=None):
-    """1D projection operator"""
+def prox_circle12(x, step, j=None, Xs=None):
+    # this is the experimental non-separable constraint
     if j == 0:
-        x = xy[0]
-        y = Xs[1][0]
-    elif j == 1:
-        x = Xs[0][0]
-        y = xy[0]
-    # return np.array([prox_circle1(x,y,j)])
-    return np.array([prox_circle2(x,y,j)])
-
-def prox_circle1(x, y, j):
-    """Finds prox in 1D case, if there is no valid x/y value, 
-        returns the closest x/y value for which there exists an in-bounds y/x"""
-    if j == 0:
-        if np.abs(y) > 0.5:
-            if x > 0.5:
-                res = 0.5
-            elif x < -0.5:
-                res = -0.5
-            else:
-                res = x
-        else:
-            bound = np.sqrt(0.25 - y**2)
-            if x > bound:
-                res = bound
-            elif x < -bound:
-                res = -bound
-            else:
-                res = x
+        xy = np.array([x[0], Xs[1][0]])
     if j == 1:
-        if np.abs(x) > 0.5:
-            if y > 0.5:
-                res = 0.5
-            elif y < -0.5:
-                res = -0.5
-            else:
-                res = y
-        else:
-            bound = np.sqrt(0.25 - x**2)
-            if y > bound:
-                res = bound
-            elif y < -bound:
-                res = -bound
-            else:
-                res = y
-    return res
+        xy = np.array([Xs[0][0], x[0]])
+    return [prox_circle(xy, step)[j]]
 
-def prox_circle2(x, y, j):
-    """Returns the x/y value of point on the circle closest (in 2-space) to (x, y)"""
-    radius = np.sqrt(x**2 + y**2)
-    if radius > 0.5:
+def prox_lim12(x, step, j=None, Xs=None, boundary=None):
+    # separable constraints
+    if boundary == "line":
         if j == 0:
-            res = x*0.5/radius
+            return prox_xline(x, step)
         if j == 1:
-            res = y*0.5/radius
-    else:
-        if j == 0:
-            res = x
-        if j == 1:
-            res = y
-    return res
+            return prox_yline(x, step)
+    # this is the experimental non-separable constraint
+    if boundary == "circle":
+        return prox_circle12(x, step, j=j, Xs=Xs)
+    raise NotImplementedError
+
+def prox_gradf_lim12(x, step, j=None, Xs=None, boundary=None):
+    """1D projection operator"""
+    # TODO: split boundary in x1 and x2 and use appropriate operator
+    if j == 0:
+        x -= step*grad_fx(Xs[0][0], Xs[1][0])
+    if j == 1:
+        y = x
+        y -= step*grad_fy(Xs[0][0], Xs[1][0])
+    return prox_lim12(x, step, j=j, Xs=Xs, boundary=boundary)
+
 
 def steps_f12(j=None, Xs=None):
     """Stepsize for f update given current state of Xs"""
@@ -154,11 +122,11 @@ def steps_f12(j=None, Xs=None):
         L = 2
     else:
         L = 2
-    slack = 0.5
+    slack = 1.
     return slack / L
 
-def plotResults(traj, label, boundary=None):
-    print (len(traj), traj[-1])
+
+def plotResults(tr, label, boundary=None):
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
 
@@ -167,30 +135,42 @@ def plotResults(traj, label, boundary=None):
     r = f(x,y)
     fig = plt.figure(figsize=(6,6))
     ax = fig.add_subplot(111,aspect='equal')
-    #ax.imshow(r, extent=(lims[0], lims[1], lims[0], lims[1]), cmap='Reds')
     ax.contourf(r, 20, extent=(lims[0], lims[1], lims[0], lims[1]), cmap='Reds')
-    traj = np.array(traj)
+
+    if tr.N == 1:
+        traj = tr["X"]
+    else:
+        traj = np.dstack([tr["X",j] for j in range(tr.N)])[:,0,:]
+
     #ax.scatter(traj[:,0], traj[:,1], s=4, c=np.arange(1,len(traj)+1), cmap='Blues_r')
-    ax.plot(traj[:,0], traj[:,1], 'b.', markersize=4, ls='-')
+    if tr.offset == 0:
+        ax.plot(traj[:,0], traj[:,1], 'b.', markersize=4, ls='-')
+    else:
+        ax.plot(traj[:tr.offset,0], traj[:tr.offset,1], 'b.', markersize=4, ls='--')
+        ax.plot(traj[tr.offset:,0], traj[tr.offset:,1], 'b.', markersize=4, ls='-')
 
     if boundary is not None:
         if boundary == "circle":
-            circ = patches.Circle((0, 0), radius=0.5, fc="none", ec='k', ls='dashed')
+            circ = patches.Circle((0, 0), radius=0.5, fc="none", ec='k', ls='dotted')
             ax.add_artist(circ)
         if boundary == "line":
-            ax.plot(lims, [-0.75, -0.75], 'k--')
-            ax.plot([0.5,0.5], lims, 'k--')
+            ax.plot(lims, [-0.75, -0.75], 'k:')
+            ax.plot([0.5,0.5], lims, 'k:')
 
     ax.scatter(traj[-1][0], traj[-1][1], marker='x', s=30, c='r')
-    ax.text(0.05, 0.95, 'it %d: (%.3f, %.3f)' % (len(traj), traj[-1][0], traj[-1][1]), transform=ax.transAxes, color='k', ha='left', va='top')
+    ax.text(0.05, 0.95, 'it %d: (%.3f, %.3f)' % (tr.it, traj[-1][0], traj[-1][1]),
+            transform=ax.transAxes, color='k', ha='left', va='top')
     ax.set_title(label)
-    fig.show()
     plt.show()
-
 
 if __name__ == "__main__":
     xy = np.array([-1.,-1.])
-    boundary = "circle" # "line"
+    if len(sys.argv)==2:
+        boundary = sys.argv[1]
+        if boundary not in ["line", "circle"]:
+            raise ValueError("Expected either 'line' or 'circle' as an argument")
+    else:
+        boundary = "circle" # "circle"
     max_iter = 100
 
     # step sizes and proximal operators for boundary
@@ -200,44 +180,45 @@ if __name__ == "__main__":
 
     # PGM without boundary
     x, tr = pa.pgm(xy, prox_gradf, step_f, max_iter=max_iter, relax=1, traceback=True)
-    plotResults(tr.history, "PGM no boundary")
+    plotResults(tr, "PGM no boundary")
 
     # PGM
     x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, relax=1, traceback=True)
-    plotResults(tr.history, "PGM", boundary=boundary)
+    plotResults(tr, "PGM", boundary=boundary)
 
     # APGM
     x, tr = pa.apgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "APGM", boundary=boundary)
+    plotResults(tr, "APGM", boundary=boundary)
 
     # ADMM
-    L = None
-    step_g = step_f
-    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, step_g, L=L, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "ADMM", boundary=boundary)
+    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=True)
+    plotResults(tr, "ADMM", boundary=boundary)
+
+    # ADMM with direct constraint projection
+    prox_g_direct = None
+    x, tr = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, traceback=True)
+    plotResults(tr, "ADMM direct", boundary=boundary)
 
     # SDMM
     M = 2
     proxs_g = [prox_g] * M # using same constraint several, i.e. M, times
-    steps_g = [step_f * M for j in range(M)] # NOTE: step_g * M !!!!
-    Ls = [L] * M
-    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "SDMM", boundary=boundary)
+    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
+    plotResults(tr, "SDMM", boundary=boundary)
 
     # GLMM
-    L = None
-    N = 2
     XY = [np.array([xy[0]]), np.array([xy[1]])]
-    M1 = 1
-    M2 = 1
-
-    if boundary == "circle":
-        proxs_g = [[prox_lim12]*M1,[prox_lim12]*M2]
     if boundary == "line":
+        N = 2
+        M1 = 7
+        M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-    
-    steps_g = [[step_f * M1 * N] * M1, [step_f * M2 * N] * M2]
-    Ls = [[L for i in range(M1)], [L for i in range(M2)]]
-    x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, steps_g, Ls=Ls, max_iter=max_iter, traceback=True)
-    plotResults(tr.history, "GLMM", boundary=boundary)
-    
+    else:
+        proxs_g = [[prox_circle12], [prox_circle12]]
+    x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
+    plotResults(tr, "GLMM", boundary=boundary)
+
+    # GLMM with direct constraint projection
+    prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
+    prox_g_direct = None
+    x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
+    plotResults(tr, "GLMM direct", boundary=boundary)
