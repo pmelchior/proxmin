@@ -84,10 +84,33 @@ def prox_gradf12(x, step, j=None, Xs=None):
         return y - step*grad_fy(Xs[0][0], Xs[1][0])
     raise NotImplementedError
 
-def prox_lim12(xy, step, j=None, Xs=None, boundary=None):
+def prox_lim12(x, step, j=None, Xs=None, boundary=None):
+    # separable constraints
+    if boundary == "line":
+        if j == 0:
+            return prox_xline(x, step)
+        if j == 1:
+            return prox_yline(x, step)
+    # this is the experimental non-separable constraint
+    if boundary == "circle":
+        if j == 0:
+            xy = np.array([x[0], Xs[1][0]])
+        if j == 1:
+            xy = np.array([Xs[0][0], x[0]])
+        return [prox_circle(xy, step)[j]]
+
+    raise NotImplementedError
+
+def prox_gradf_lim12(x, step, j=None, Xs=None, boundary=None):
     """1D projection operator"""
     # TODO: split boundary in x1 and x2 and use appropriate operator
-    return xy
+    if j == 0:
+        x -= step*grad_fx(Xs[0][0], Xs[1][0])
+    if j == 1:
+        y = x
+        y -= step*grad_fy(Xs[0][0], Xs[1][0])
+    return prox_lim12(x, step, j=j, Xs=Xs, boundary=boundary)
+
 
 def steps_f12(j=None, Xs=None):
     """Stepsize for f update given current state of Xs"""
@@ -188,3 +211,9 @@ if __name__ == "__main__":
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
         x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
         plotResults(tr, "GLMM", boundary=boundary)
+
+    XY = [np.array([xy[0]]), np.array([xy[1]])]
+    prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
+    prox_g_direct = None
+    x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
+    plotResults(tr, "GLMM direct", boundary=boundary)

@@ -258,7 +258,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, ma
         return X, tr
 
 
-def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
+def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
          max_iter=1000, e_rel=1e-6, traceback=False, steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
 
@@ -271,6 +271,10 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
     """
     # Set up
     N = len(X0s)
+
+    # allow proxs_g to be None
+    if proxs_g is None:
+        proxs_g = [proxs_g] * N
     assert len(proxs_g) == N
 
     if np.isscalar(e_rel):
@@ -297,22 +301,30 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
 
     M = [0] * N
     for j in range(N):
-        if not hasattr(proxs_g[j], "__iter__"):
-            proxs_g[j] = [proxs_g[j]]
-        M[j] = len(proxs_g[j])
-        if not hasattr(steps_g[j], "__iter__"):
-            steps_g[j] = [steps_g[j]] * M[j]
-        if not hasattr(Ls[j], "__iter__"):
-            Ls[j] = [Ls[j]] * M[j]
-        assert len(steps_g[j]) == M[j]
-        assert len(Ls[j]) == M[j]
+        if proxs_g[j] is not None:
+            if not hasattr(proxs_g[j], "__iter__"):
+                proxs_g[j] = [proxs_g[j]]
+            M[j] = len(proxs_g[j])
+            if not hasattr(steps_g[j], "__iter__"):
+                steps_g[j] = [steps_g[j]] * M[j]
+            if not hasattr(Ls[j], "__iter__"):
+                Ls[j] = [Ls[j]] * M[j]
+            assert len(steps_g[j]) == M[j]
+            assert len(Ls[j]) == M[j]
 
-    # need container for current-iteration steps_g
-    steps_g_ = [[[None] for i in range(M[j])] for j in range(N)]
-
-    # use matrix adapters
-    _L = [[ utils.MatrixAdapter(Ls[n][m]) for m in range(M[n])] for n in range(N)]
-    norm_L2 = [[ utils.get_spectral_norm(_L[n][m].L) for m in range(M[n])] for n in range(N)]
+    # need container for current-iteration steps_g and matrix adapters
+    steps_g_ = []
+    _L = []
+    norm_L2 = []
+    for j in range(N):
+        if proxs_g[j] is None:
+            steps_g_.append(None)
+            _L.append(utils.MatrixAdapter(None))
+            norm_L2.append(1)
+        else:
+            steps_g_.append([[None] for i in range(M[j])])
+            _L.append([ utils.MatrixAdapter(Ls[j][m]) for m in range(M[j])])
+            norm_L2.append([ utils.get_spectral_norm(_L[j][m].L) for m in range(M[j])])
 
     # Initialization
     X, Z, U = [],[],[]
@@ -322,6 +334,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
         X.append(Xj)
         Z.append(Zj)
         U.append(Uj)
+
     # containers
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
@@ -377,6 +390,9 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
 
         it += 1
 
+        """
+        # this does not seem to be necessary and/or effective!!!
+
         # if X and primal residual does not change: decrease step_f and step_g, and restart
         if it > 1:
             # perform step size update for each Xj independently
@@ -392,12 +408,14 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g, steps_g=None, Ls=None,
 
                     # TODO: Traceback needs to have offset for each j!
                     tr.reset()
-                    tr.update_history(it, X=X, step_f=step_f)
-                    tr.update_history(it, M=M[j], Z=Z, U=U, R=np.zeros_like(Z),
-                                      S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
+                    tr.update_history(it, X=X[j], steps_f=steps_f[j])
+                    tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
+                                      R=np.zeros_like(Z[j]),
+                                      S=[np.zeros_like(X[j]) for n in range(M[j])])
 
         R_ = R
         X_ = [X[j].copy() for j in range(N)]
+        """
 
     if it+1 >= max_iter:
         logger.warning("Solution did not converge")

@@ -137,7 +137,7 @@ class Traceback(object):
         # Create a new entry in the history for new variables (if they don't exist)
         if not np.any([k in self.history[j] for k in kwargs]):
             for k in kwargs:
-                if M is None:
+                if M is None or M == 0:
                     self.history[j][k] = [[]]
                 else:
                     self.history[j][k] = [[] for m in range(M)]
@@ -151,7 +151,7 @@ class Traceback(object):
 
         # Add the variables to the history
         for k,v in kwargs.items():
-            if M is None:
+            if M is None or M == 0:
                 self._store_variable(j, k, 0, v)
             else:
                 for m in range(M):
