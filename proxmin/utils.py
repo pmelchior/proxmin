@@ -58,6 +58,50 @@ class MatrixAdapter(object):
             return self.L.dot(X.flatten()).reshape(X.shape[0], -1)
         raise NotImplementedError("MatrixAdapter.dot() is not useful with axis=0.\nUse regular matrix dot product instead!")
 
+class MathList(list):
+    def __init__(self, *args):
+        super(MathList, self).__init__(*args)
+
+    def copy(self):
+        return MathList(self)
+
+    def __add__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] + l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] + l for i in range(len(self))])
+
+    def __sub__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] - l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] - l for i in range(len(self))])
+
+    def __mul__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] * l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] * l for i in range(len(self))])
+
+    def __div__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] / l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] / l for i in range(len(self))])
+
+    def __truediv__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i].__truediv__(l[i]) for i in range(len(self))])
+        else:
+            return MathList([self[i].__truediv__(l) for i in range(len(self))])
+        return self.__div__(l)
+
+    def __floordiv__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] // l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] // l for i in range(len(self))])
+
 
 class Traceback(object):
     """Container structure for traceback of algorithm behavior.
@@ -173,11 +217,15 @@ def initXZU(X0, L):
 def l2sq(x):
     """Sum the matrix elements squared
     """
+    if isinstance(x, (MathList)):
+        return MathList([l2sq(x[i]) for i in range(len(x))])
     return (x**2).sum()
 
 def l2(x):
     """Square root of the sum of the matrix elements squared
     """
+    if isinstance(x, (MathList)):
+        return MathList([l2(x[i]) for i in range(len(x))])
     return np.sqrt((x**2).sum())
 
 def get_step_g(step_f, norm_L2, N=1, M=1):

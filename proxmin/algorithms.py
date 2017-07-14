@@ -23,13 +23,13 @@ def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=Fal
     for it in range(max_iter):
 
         _X = prox_f(Z, step_f)
-        Z = X + relax*(_X - X)
+        Z = X + (_X - X)*relax
 
         if traceback:
             tr.update_history(it+1, X=_X, Z=Z, step_f=step_f)
 
         # test for fixed point convergence
-        if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
+        if np.array((utils.l2sq(X - _X) <= utils.l2sq(X) * e_rel**2)).all():
             X = _X
             break
 
@@ -66,10 +66,10 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
         if traceback:
             tr.update_history(it+1, X=_X, Z=Z, step_f=step_f, t=t_, gamma=gamma)
 
-        Z = X + gamma*(_X - X)
+        Z = X + (_X - X)*gamma
 
         # test for fixed point convergence
-        if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
+        if np.array((utils.l2sq(X - _X) <= utils.l2sq(X) * e_rel**2)).all():
             X = _X
             break
 
