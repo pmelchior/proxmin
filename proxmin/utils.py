@@ -58,6 +58,50 @@ class MatrixAdapter(object):
             return self.L.dot(X.flatten()).reshape(X.shape[0], -1)
         raise NotImplementedError("MatrixAdapter.dot() is not useful with axis=0.\nUse regular matrix dot product instead!")
 
+class MathList(list):
+    def __init__(self, *args):
+        super(MathList, self).__init__(*args)
+
+    def copy(self):
+        return MathList(self)
+
+    def __add__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] + l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] + l for i in range(len(self))])
+
+    def __sub__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] - l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] - l for i in range(len(self))])
+
+    def __mul__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] * l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] * l for i in range(len(self))])
+
+    def __div__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] / l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] / l for i in range(len(self))])
+
+    def __truediv__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i].__truediv__(l[i]) for i in range(len(self))])
+        else:
+            return MathList([self[i].__truediv__(l) for i in range(len(self))])
+        return self.__div__(l)
+
+    def __floordiv__(self, l):
+        if isinstance(l, (MathList, list)):
+            return MathList([self[i] // l[i] for i in range(len(self))])
+        else:
+            return MathList([self[i] // l for i in range(len(self))])
+
 
 class Traceback(object):
     """Container structure for traceback of algorithm behavior.
@@ -173,11 +217,15 @@ def initXZU(X0, L):
 def l2sq(x):
     """Sum the matrix elements squared
     """
+    if isinstance(x, (MathList)):
+        return MathList([l2sq(x[i]) for i in range(len(x))])
     return (x**2).sum()
 
 def l2(x):
     """Square root of the sum of the matrix elements squared
     """
+    if isinstance(x, (MathList)):
+        return MathList([l2(x[i]) for i in range(len(x))])
     return np.sqrt((x**2).sum())
 
 def get_step_g(step_f, norm_L2, N=1, M=1):
@@ -284,7 +332,7 @@ def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
                        (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2)))
         return convergence, (e_pri2, e_dual2, lR2, lS2)
 
-def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwargs):
+def check_convergence(newX, oldX, e_rel):
     """Check that the algorithm converges using Langville 2014 criteria
 
     Uses the check from Langville 2014, Section 5, to check if the NMF
@@ -295,8 +343,5 @@ def check_convergence(it, newX, oldX, e_rel, min_iter=10, history=False, **kwarg
     new_old = newX*oldX
     old2 = oldX**2
     norms = [np.sum(new_old), np.sum(old2)]
-    if history:
-        norms += [new_old, old2]
-
-    convergent = (it > min_iter) and (norms[0] >= (1-e_rel**2)*norms[1])
+    convergent = norms[0] >= (1-e_rel**2)*norms[1]
     return convergent, norms

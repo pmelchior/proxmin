@@ -23,13 +23,13 @@ def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=Fal
     for it in range(max_iter):
 
         _X = prox_f(Z, step_f)
-        Z = X + relax*(_X - X)
+        Z = X + (_X - X)*relax
 
         if traceback:
             tr.update_history(it+1, X=_X, Z=Z, step_f=step_f)
 
         # test for fixed point convergence
-        if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
+        if np.array((utils.l2sq(X - _X) <= utils.l2sq(X) * e_rel**2)).all():
             X = _X
             break
 
@@ -66,10 +66,10 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
         if traceback:
             tr.update_history(it+1, X=_X, Z=Z, step_f=step_f, t=t_, gamma=gamma)
 
-        Z = X + gamma*(_X - X)
+        Z = X + (_X - X)*gamma
 
         # test for fixed point convergence
-        if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
+        if np.array((utils.l2sq(X - _X) <= utils.l2sq(X) * e_rel**2)).all():
             X = _X
             break
 
@@ -259,11 +259,16 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, ma
 
 
 def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
-         max_iter=1000, e_rel=1e-6, traceback=False, steps_g_update='steps_f'):
+         max_iter=1000, e_rel=1e-6, traceback=False, proxs_f_update='cascade', steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
 
     proxs_f must have signature prox(X,step, j=None, Xs=None)
     steps_f_cb(j, Xs) -> Reals
+    proxs_f_update in ['cascade', 'block']:
+        cascade: proxs_f are evaluated sequentually,
+                 i.e. the update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
+        block:   proxs_f are evaluated independently, i.e. update for X_j^{k+1}
+                 is aware of X_l^k forall l only. This approach is parallelizable.
     steps_g_update in ['steps_f', 'fixed', 'relative']:
         steps_f:  update steps_g as required by the most conservative limit (recommended)
         fixed:    never updated initial value of steps_g
@@ -282,6 +287,9 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     steps_f = [None] * N
 
     # if steps_g / Ls are None or single: create N duplicates
+    assert steps_g_update.lower() in ['steps_f', 'fixed', 'relative']
+    assert proxs_f_update.lower() in ['cascade', 'block']
+
     if steps_g_update.lower() == 'steps_f':
         if steps_g is not None:
             logger.warning("Setting steps_g = None for update strategy 'steps_f'.")
@@ -349,55 +357,42 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
                               S=[np.zeros_like(X[j]) for n in range(M[j])])
 
     while it < max_iter:
-        # get compatible step sizes for f and g
-        proxs_g_ = []
+
+        # cascading or blocking updates?
+        if proxs_f_update.lower() == 'block':
+            X_ = [X[j].copy() for j in range(N)]
+        else:
+            X_ = X
+
+        # iterate over blocks X_j
         for j in range(N):
-            step_f_j = steps_f_cb(j, X) * slack[j]
+            proxs_f_j = partial(proxs_f, j=j, Xs=X_)
+            steps_f_j = steps_f_cb(j, X_) * slack[j]
+
             # update steps_g relative to change of steps_f ...
             if steps_g_update.lower() == 'relative':
                 for i in range(M[j]):
-                    steps_g[j][i] *= step_f_j / steps_f[j]
-            steps_f[j] = step_f_j
+                    steps_g[j][i] *= steps_f_j / steps_f[j]
+            steps_f[j] = steps_f_j
             # ... or update them as required by the most conservative limit
             if steps_g_update.lower() == 'steps_f':
                 for i in range(M[j]):
                     steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], N=N, M=M[j])
 
             # update the variables
-            proxs_f_j = partial(proxs_f, j=j, Xs=X)
-
-            # check of prox_g has arguments to act as operator on Xs
-            proxs_g_j = []
-            if proxs_g[j] is not None:
-                for i in range(M[j]):
-                    arguments = proxs_g[j][i].func_code.co_varnames
-                    if 'Xs' in arguments and 'j' in arguments:
-                        proxs_g_j.append(partial(proxs_g[j][i], j=j, Xs=X))
-                    else:
-                        proxs_g_j.append(proxs_g[j][i])
-            else:
-                proxs_g_j = proxs_g[j]
-
-            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j],
-                                                       proxs_g_j, steps_g_[j], _L[j])
+            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j],
+                                                       proxs_g[j], steps_g_[j], _L[j])
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j],
                                                                            R[j], S[j], e_rel[j])
             # Optionally update the new state
             if traceback:
-                tr.update_history(it+1, j=j, X=X[j], steps_f=steps_f[j])
+                tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
                 tr.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
 
-            # TODO: do we need a X - X_ convergence criterion?
-            """
-            # Convergence crit from Langville 2014, section 5
-            iter_norms = []
-            likelihood_convergence = []
-            for n,Xk_ in enumerate(_allXk):
-                convergence, norms = utils.check_convergence(it, Xk_, allXk[n], e_rel[n], min_iter)
-                iter_norms.append(norms)
-                likelihood_convergence.append(convergence)
-            """
+        if proxs_f_update.lower() == 'block':
+            for j in range(N):
+                X[j] = X_[j]
 
         if all(convergence):
             break
