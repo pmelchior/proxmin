@@ -111,3 +111,58 @@ def prox_max_entropy(X, step, gamma=1):
     # minimize entropy: return gamma_ * np.real(lambertw(np.exp((X - gamma_) / gamma_) / gamma_))
 
     return - gamma_ * np.real(lambertw(np.exp(-(X + gamma_) / gamma_) / -gamma_))
+
+def get_gradient_y(shape, py):
+    """Calculate the gradient in the y direction to the line at py
+    
+    The y gradient operator is a block matrix, where each block is the size of the image width.
+    The matrix itself is made up of (img_height x img_height) blocks, most of which are all zeros.
+    """
+    import scipy.sparse
+
+    height, width = shape
+    rows = []
+    empty = scipy.sparse.dia_matrix((width, width))
+    identity = scipy.sparse.identity(width)
+    
+    # Create the blocks by row, beginning with blocks leading up to the peak row from the top
+    for n in range(py):
+        row = [empty]*n
+        row += [-identity, identity]
+        row += [empty]*(height-n-2)
+        rows.append(row)
+    # Set all elements in the peak row to zero
+    rows.append([empty]*height)
+    # Create the blocks for the rows leading up to the peak row from the bottom
+    for n in range(height-py-1):
+        row = [empty]*(py+n)
+        row += [identity, -identity]
+        row += [empty]*(height-py-n-2)
+        rows.append(row)
+    return scipy.sparse.bmat(rows)
+
+def get_gradient_x(shape, px):
+    """Calculate the gradient in the x direction to the line at px
+    
+    The y gradient operator is a block diagonal matrix, where each block is the size of the image width.
+    The matrix itself is made up of (img_height x img_height) blocks, most of which are all zeros.
+    """
+    import scipy.sparse
+
+    height, width = shape
+    size = height * width
+
+    # Set the diagonal to -1, except for the value at the peak, which is zero
+    c = -np.ones((width,))
+    c[px] = 0
+    # Set the pixels leading up to the peak from the left
+    r = np.zeros_like(c)
+    r[:px] = 1
+    # Set the pixels leading up to the peak from the right
+    l = np.zeros_like(c)
+    l[px:] = 1
+    # Make a block for a single row in the image
+    block = scipy.sparse.diags([l, c, r], [-1, 0,1], shape=(width,width))
+    # Use the same block for each row
+    op = scipy.sparse.block_diag([block for n in range(height)])
+    return op
