@@ -259,16 +259,18 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, ma
 
 
 def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
-         max_iter=1000, e_rel=1e-6, traceback=False, proxs_f_update='cascade', steps_g_update='steps_f'):
+         max_iter=1000, e_rel=1e-6, traceback=False, update='cascade',  update_order=None, steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
 
     proxs_f must have signature prox(X,step, j=None, Xs=None)
     steps_f_cb(j, Xs) -> Reals
-    proxs_f_update in ['cascade', 'block']:
+    update in ['cascade', 'block']:
         cascade: proxs_f are evaluated sequentually,
                  i.e. the update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
         block:   proxs_f are evaluated independently, i.e. update for X_j^{k+1}
                  is aware of X_l^k forall l only. This approach is parallelizable.
+    update_order: list of components to update in desired order. Only relevant
+                  if update=='cascade'.
     steps_g_update in ['steps_f', 'fixed', 'relative']:
         steps_f:  update steps_g as required by the most conservative limit (recommended)
         fixed:    never updated initial value of steps_g
@@ -286,9 +288,16 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
         e_rel = [e_rel] * N
     steps_f = [None] * N
 
-    # if steps_g / Ls are None or single: create N duplicates
+    assert update.lower() in ['cascade', 'block']
     assert steps_g_update.lower() in ['steps_f', 'fixed', 'relative']
-    assert proxs_f_update.lower() in ['cascade', 'block']
+
+    if update_order is None:
+        update_order = range(N)
+    else:
+        # we could check that every component is in the list
+        # but one can think of cases when a component is *not* to be updated.
+        #assert len(update_order) == N
+        pass
 
     if steps_g_update.lower() == 'steps_f':
         if steps_g is not None:
@@ -299,6 +308,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             logger.warning("Ignoring steps_g update strategy '%s' because steps_g is None." % steps_g_update)
             steps_g_update = 'steps_f'
 
+    # if steps_g / Ls are None or single: create N duplicates
     if not hasattr(steps_g, "__iter__"):
         steps_g = [steps_g] * N
     if not hasattr(Ls, "__iter__"):
@@ -350,7 +360,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
 
     if traceback:
         tr = utils.Traceback(N)
-        for j in range(N):
+        for j in update_order:
             tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
             tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
                               R=np.zeros_like(Z[j]),
@@ -359,13 +369,13 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     while it < max_iter:
 
         # cascading or blocking updates?
-        if proxs_f_update.lower() == 'block':
+        if update.lower() == 'block':
             X_ = [X[j].copy() for j in range(N)]
         else:
             X_ = X
 
         # iterate over blocks X_j
-        for j in range(N):
+        for j in update_order:
             proxs_f_j = partial(proxs_f, j=j, Xs=X_)
             steps_f_j = steps_f_cb(j, X_) * slack[j]
 
@@ -383,14 +393,13 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j],
                                                        proxs_g[j], steps_g_[j], _L[j])
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j],
-                                                                           R[j], S[j], e_rel[j])
+            convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
             # Optionally update the new state
             if traceback:
                 tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
                 tr.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
 
-        if proxs_f_update.lower() == 'block':
+        if update.lower() == 'block':
             for j in range(N):
                 X[j] = X_[j]
 
