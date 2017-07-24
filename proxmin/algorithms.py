@@ -256,7 +256,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
 
 
 def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
-         max_iter=1000, e_rel=1e-6, traceback=False, update='cascade',  update_order=None, steps_g_update='steps_f'):
+         accelerated=True, max_iter=1000, e_rel=1e-6, traceback=False, update='cascade',  update_order=None, steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
 
     proxs_f must have signature prox(X,step, j=None, Xs=None)
@@ -343,25 +343,27 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
 
     # Initialization
     X, Z, U = [],[],[]
+    Xk = []
     LX, R, S = [None] * N, [None] * N, [None] * N
     for j in range(N):
         Xj, Zj, Uj = utils.initXZU(X0s[j], _L[j])
         X.append(Xj)
         Z.append(Zj)
         U.append(Uj)
+        Xk.append(Xj.copy())
 
     # containers
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
     it = 0
+    t, omega = 1., [0.] * N
+    delta, l, Lmax = 0.999, 0, np.empty(N)
 
     if traceback:
         tr = utils.Traceback(N)
         for j in update_order:
-            tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
-            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
-                              R=np.zeros_like(Z[j]),
-                              S=[np.zeros_like(X[j]) for n in range(M[j])])
+            tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j], omega=omega)
+            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=np.zeros_like(Z[j]), S=[np.zeros_like(X[j]) for n in range(M[j])])
 
     while it < max_iter:
 
@@ -370,6 +372,9 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             X_ = [X[j].copy() for j in range(N)]
         else:
             X_ = X
+
+        # acceleration parameter
+        t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
 
         # iterate over blocks X_j
         for j in update_order:
@@ -387,8 +392,15 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
                     steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], N=N, M=M[j])
 
             # update the variables
-            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j],
-                                                       proxs_g[j], steps_g_[j], _L[j])
+            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
+
+            # Nesterov acceleration
+            if accelerated:
+                omega[j] = (t - 1)/t_
+                Lmax[j] = max(l, 1./steps_f[j])
+                omega[j] = min(omega[j], delta*np.sqrt(l/Lmax[j]))
+                X_[j] += omega[j]*(X_[j] - Xk[j])
+
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
             # Optionally update the new state
@@ -404,33 +416,9 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             break
 
         it += 1
-
-        """
-        # this does not seem to be necessary and/or effective!!!
-
-        # if X and primal residual does not change: decrease step_f and step_g, and restart
-        if it > 1:
-            # perform step size update for each Xj independently
-            for j in range(N):
-                if (X[j] == X_[j]).all() and all([(R[j][i] == R_[j][i]).all() for i in range(M[j])]):
-                    slack[j] /= 2
-
-                    # re-init
-                    it = 0
-
-                    X[j],Z[j],U[j]  = utils.initXZU(X0s[j], _L[j])
-                    logger.warning("Restarting with step_f[%d] = %.3f" % (j,steps_f[j]*slack[j]))
-
-                    # TODO: Traceback needs to have offset for each j!
-                    tr.reset()
-                    tr.update_history(it, X=X[j], steps_f=steps_f[j])
-                    tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
-                                      R=np.zeros_like(Z[j]),
-                                      S=[np.zeros_like(X[j]) for n in range(M[j])])
-
-        R_ = R
-        X_ = [X[j].copy() for j in range(N)]
-        """
+        Xk = [X[j].copy() for j in range(N)]
+        t = t_
+        l = Lmax.min()
 
     if it+1 >= max_iter:
         logger.warning("Solution did not converge")
