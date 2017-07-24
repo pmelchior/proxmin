@@ -48,33 +48,34 @@ def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=Fal
 def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
     """Accelerated Proximal Gradient Method
 
-    Adapted from Combettes 2009, Algorithm 3.6
+    Adapted from Combettes 2009, Algorithm 3.6,
+    with modifications from Xu & Yin (2015)
     """
     X = X0.copy()
-    Z = X0.copy()
+    Xk = X.copy()
     t = 1.
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(0, X=X, Z=Z, step_f=step_f, t=t, gamma=1.)
+        tr.update_history(0, X=X, step_f=step_f, t=t, omega=0.)
 
     for it in range(max_iter):
-        _X = prox_f(Z, step_f)
+        # Nesterov acceleration
         t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
-        gamma = 1 + (t - 1)/t_
+        omega = (t - 1)/t_
+
+        X = prox_f(X, step_f)
+        X += omega*(X - Xk)
+        t = t_
 
         if traceback:
-            tr.update_history(it+1, X=_X, Z=Z, step_f=step_f, t=t_, gamma=gamma)
-
-        Z = X + gamma*(_X - X)
+            tr.update_history(it+1, X=X, step_f=step_f, t=t_, omega=omega)
 
         # test for fixed point convergence
-        if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
-            X = _X
+        if utils.l2sq(X - Xk) <= e_rel**2*utils.l2sq(X):
             break
 
-        t = t_
-        X = _X
+        Xk = X.copy()
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
