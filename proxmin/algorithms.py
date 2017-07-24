@@ -8,49 +8,15 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin.algorithms")
 
-def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=False):
+def pgm(X0, prox_f, step_f, accelerated=True, relax=1, e_rel=1e-6, max_iter=1000, traceback=False):
     """Proximal Gradient Method
 
-    Adapted from Combettes 2009, Algorithm 3.4
+    Adapted from Combettes 2009, Algorithm 3.4.
+    The accelerated version is Algorithm 3.6 with modifications
+    from Xu & Yin (2015).
     """
-    X = X0.copy()
-    Z = X0.copy()
+    assert relax < 1.5
 
-    if traceback:
-        tr = utils.Traceback()
-        tr.update_history(0, X=X, Z=Z, step_f=step_f)
-
-    for it in range(max_iter):
-
-        _X = prox_f(Z, step_f)
-        Z = X + relax*(_X - X)
-
-        if traceback:
-            tr.update_history(it+1, X=_X, Z=Z, step_f=step_f)
-
-        # test for fixed point convergence
-        if utils.l2sq(X - _X) <= e_rel**2*utils.l2sq(X):
-            X = _X
-            break
-
-        X = _X
-
-    if it+1 == max_iter:
-        logger.warning("Solution did not converge")
-    logger.info("Completed {0} iterations".format(it+1))
-
-    if not traceback:
-        return X
-    else:
-        return X, tr
-
-
-def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
-    """Accelerated Proximal Gradient Method
-
-    Adapted from Combettes 2009, Algorithm 3.6,
-    with modifications from Xu & Yin (2015)
-    """
     X = X0.copy()
     Xk = X.copy()
     t = 1.
@@ -60,16 +26,21 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
         tr.update_history(0, X=X, step_f=step_f, t=t, omega=0.)
 
     for it in range(max_iter):
-        # Nesterov acceleration
-        t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
-        omega = (t - 1)/t_
 
         X = prox_f(X, step_f)
+
+        # Nesterov acceleration
+        if accelerated:
+            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
+            omega = (t - 1)/t_
+            t = t_
+        else:
+            omega = relax - 1 # limited to < 0.5 !
+
         X += omega*(X - Xk)
-        t = t_
 
         if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, t=t_, omega=omega)
+            tr.update_history(it+1, X=X, step_f=step_f, t=t, omega=omega)
 
         # test for fixed point convergence
         if utils.l2sq(X - Xk) <= e_rel**2*utils.l2sq(X):

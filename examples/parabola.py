@@ -126,10 +126,7 @@ def prox_gradf_lim12(x, step, j=None, Xs=None, boundary=None):
 def steps_f12(j=None, Xs=None):
     """Stepsize for f update given current state of Xs"""
     # Lipschitz const is always 2
-    if j==0:
-        L = 2
-    else:
-        L = 2
+    L = 2
     slack = 1.
     return slack / L
 
@@ -186,26 +183,36 @@ if __name__ == "__main__":
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
 
+    """
     # PGM without boundary
     x, tr = pa.pgm(xy, prox_gradf, step_f, max_iter=max_iter, relax=1, traceback=True)
     plotResults(tr, "PGM no boundary")
+    """
 
     # PGM
-    x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, relax=1, traceback=True)
+    x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, accelerated=False, traceback=True)
     plotResults(tr, "PGM", boundary=boundary)
 
     # APGM
-    x, tr = pa.apgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=True)
+    x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=True)
     plotResults(tr, "APGM", boundary=boundary)
 
     # ADMM
-    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=True)
+    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, accelerated=False, traceback=True)
     plotResults(tr, "ADMM", boundary=boundary)
+
+    # ADMM with acceleration
+    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=True)
+    plotResults(tr, "ADMM accelerated", boundary=boundary)
 
     # ADMM with direct constraint projection
     prox_g_direct = None
-    x, tr = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, traceback=True)
+    x, tr = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, accelerated=False, traceback=True)
     plotResults(tr, "ADMM direct", boundary=boundary)
+
+    # and with acceleration
+    x, tr = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, traceback=True)
+    plotResults(tr, "ADMM direct accelerated", boundary=boundary)
 
     # SDMM
     M = 2
