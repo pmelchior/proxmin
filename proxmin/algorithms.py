@@ -20,11 +20,11 @@ def pgm(X0, prox_f, step_f, accelerated=True, relax=1, e_rel=1e-6, max_iter=1000
     # init
     X = X0.copy()
     Xk = X.copy()
-    t = 1.
+    t, omega = 1., 0.
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(0, X=X, step_f=step_f, omega=0.)
+        tr.update_history(0, X=X, step_f=step_f, omega=omega)
 
     for it in range(max_iter):
 
@@ -76,11 +76,9 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True,
 
     # init
     X,Z,U = utils.initXZU(X0, _L)
+    Xk = X.copy()
     it = 0
-    omega = 0.
-    if accelerated:
-        Xk = X.copy()
-        t = 1.
+    t, omega = 1., 0.
 
     if traceback:
         tr = utils.Traceback()
@@ -96,7 +94,6 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True,
             t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
             omega = (t - 1)/t_
             X += omega*(X - Xk)
-            Xk = X.copy()
             t = t_
 
         # Optionally store the variables in the history
@@ -114,7 +111,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True,
         # if X and primal residual does not change: decrease step_f and step_g, and restart
         if prox_g is not None:
             if it > 1:
-                if (X == X_).all() and (R == R_).all():
+                if (X == Xk).all() and (R == Rk).all():
                     step_f /= 2
                     step_g /= 2
                     # re-init
@@ -130,8 +127,9 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True,
                         t = 1.
                         omega = 0.
 
-            R_ = R
-            X_ = X.copy()
+            Rk = R
+        Xk = X.copy() # used for acceleration and non-convergence test
+
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
@@ -193,11 +191,9 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
 
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
+    Xk = X.copy()
     it = 0
-    omega = 0.
-    if accelerated:
-        Xk = X.copy()
-        t = 1.
+    t, omega = 1., 0.
 
     if traceback:
         tr = utils.Traceback()
@@ -215,7 +211,6 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
             t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
             omega = (t - 1)/t_
             X += omega*(X - Xk)
-            Xk = X.copy()
             t = t_
 
         if traceback:
@@ -232,7 +227,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
 
         # if X and primal residual does not change: decrease step_f and step_g, and restart
         if it > 1:
-            if (X == X_).all() and all([(R[i] == R_[i]).all() for i in range(M)]):
+            if (X == Xk).all() and all([(R[i] == Rk[i]).all() for i in range(M)]):
                 step_f /= 2
                 for i in range(M):
                     steps_g[i] /= 2
@@ -247,8 +242,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
                                   S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
                 logger.warning("Restarting with step_f = %.3f" % step_f)
 
-        R_ = R
-        X_ = X.copy()
+        Rk = R
+        Xk = X.copy()
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
