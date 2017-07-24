@@ -141,6 +141,7 @@ class Traceback(object):
                     self.history[j][k] = [[]]
                 else:
                     self.history[j][k] = [[] for m in range(M)]
+        """
         # Check that the variables have been updated once per iteration
         elif np.any([[len(h)!=it+self.offset for h in self.history[j][k]] for k in kwargs.keys()]):
             for k in kwargs.keys():
@@ -148,7 +149,7 @@ class Traceback(object):
                     if len(h) != it+self.offset:
                         err_str = "At iteration {0}, {1}[{2}] already has {3} entries"
                         raise Exception(err_str.format(it, k, n, len(h)-self.offset))
-
+        """
         # Add the variables to the history
         for k,v in kwargs.items():
             if M is None or M == 0:

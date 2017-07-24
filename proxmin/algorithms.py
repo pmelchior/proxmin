@@ -17,13 +17,14 @@ def pgm(X0, prox_f, step_f, accelerated=True, relax=1, e_rel=1e-6, max_iter=1000
     """
     assert relax < 1.5
 
+    # init
     X = X0.copy()
     Xk = X.copy()
     t = 1.
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(0, X=X, step_f=step_f, t=t, omega=0.)
+        tr.update_history(0, X=X, step_f=step_f, omega=0.)
 
     for it in range(max_iter):
 
@@ -40,7 +41,7 @@ def pgm(X0, prox_f, step_f, accelerated=True, relax=1, e_rel=1e-6, max_iter=1000
         X += omega*(X - Xk)
 
         if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, t=t, omega=omega)
+            tr.update_history(it+1, X=X, step_f=step_f, omega=omega)
 
         # test for fixed point convergence
         if utils.l2sq(X - Xk) <= e_rel**2*utils.l2sq(X):
@@ -58,7 +59,7 @@ def pgm(X0, prox_f, step_f, accelerated=True, relax=1, e_rel=1e-6, max_iter=1000
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_iter=1000, accelerated=True, traceback=False):
+def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Alternating Direction Method of Multipliers
 
@@ -76,31 +77,31 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_i
     # init
     X,Z,U = utils.initXZU(X0, _L)
     it = 0
-    if traceback:
-        tr = utils.Traceback()
-        tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
-                          step_f=step_f, step_g=step_g)
+    omega = 0.
     if accelerated:
         Xk = X.copy()
         t = 1.
-        omega = 0.
+
+    if traceback:
+        tr = utils.Traceback()
+        tr.update_history(it, X=X, step_f=step_f, omega=omega, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_g=step_g)
 
     while it < max_iter:
-        if accelerated:
-            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
-            omega = (t - 1)/t_
 
         # Update the variables, return LX and primal/dual residual
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
 
+        # Nesterov acceleration
         if accelerated:
+            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
+            omega = (t - 1)/t_
             X += omega*(X - Xk)
             Xk = X.copy()
             t = t_
 
         # Optionally store the variables in the history
         if traceback:
-            tr.update_history(it+1, X=X, Z=Z, U=U, R=R, S=S, step_f=step_f, step_g=step_g)
+            tr.update_history(it+1, X=X, step_f=step_f, omega=omega, Z=Z, U=U, R=R, S=S,  step_g=step_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
@@ -142,7 +143,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_i
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, max_iter=1000, traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=True, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Implement Simultaneous-Direction Method of Multipliers
 
@@ -193,20 +194,32 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, ma
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
     it = 0
+    omega = 0.
+    if accelerated:
+        Xk = X.copy()
+        t = 1.
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(it, X=X, step_f=step_f)
+        tr.update_history(it, X=X, step_f=step_f, omega=omega)
         tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
                           S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
 
     while it < max_iter:
+
         # update the variables
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
 
-        # Optionally update the new state
+        # Nesterov acceleration
+        if accelerated:
+            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
+            omega = (t - 1)/t_
+            X += omega*(X - Xk)
+            Xk = X.copy()
+            t = t_
+
         if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f)
+            tr.update_history(it+1, X=X, step_f=step_f, omega=omega)
             tr.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1

@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
     # APGM
     x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=True)
-    plotResults(tr, "APGM", boundary=boundary)
+    plotResults(tr, "PGM accelerated", boundary=boundary)
 
     # ADMM
     x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, accelerated=False, traceback=True)
@@ -217,8 +217,12 @@ if __name__ == "__main__":
     # SDMM
     M = 2
     proxs_g = [prox_g] * M # using same constraint several, i.e. M, times
-    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
+    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, accelerated=False, max_iter=max_iter, traceback=True)
     plotResults(tr, "SDMM", boundary=boundary)
+
+    # and with acceleration
+    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
+    plotResults(tr, "SDMM accelerated", boundary=boundary)
 
     # GLMM
     XY = [np.array([xy[0]]), np.array([xy[1]])]
