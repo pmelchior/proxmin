@@ -86,7 +86,7 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_iter=1000, traceback=False):
+def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_iter=1000, accelerated=True, traceback=False):
 
     """Alternating Direction Method of Multipliers
 
@@ -104,15 +104,27 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_i
     # init
     X,Z,U = utils.initXZU(X0, _L)
     it = 0
-
     if traceback:
         tr = utils.Traceback()
         tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
                           step_f=step_f, step_g=step_g)
+    if accelerated:
+        Xk = X.copy()
+        t = 1.
+        omega = 0.
 
     while it < max_iter:
+        if accelerated:
+            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
+            omega = (t - 1)/t_
+
         # Update the variables, return LX and primal/dual residual
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
+
+        if accelerated:
+            X += omega*(X - Xk)
+            Xk = X.copy()
+            t = t_
 
         # Optionally store the variables in the history
         if traceback:
@@ -140,6 +152,11 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_i
                     logger.warning("Restarting with step_f = %.3f" % step_f)
                     tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
                                       step_f=step_f, step_g=step_g)
+
+                    if accelerated:
+                        t = 1.
+                        omega = 0.
+
             R_ = R
             X_ = X.copy()
 
