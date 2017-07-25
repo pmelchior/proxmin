@@ -8,40 +8,34 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin.algorithms")
 
-def pgm(X0, prox_f, step_f, accelerated=True, relax=1, e_rel=1e-6, max_iter=1000, traceback=False):
+def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=False):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4.
     The accelerated version is Algorithm 3.6 with modifications
     from Xu & Yin (2015).
     """
-    assert relax < 1.5
 
     # init
     X = X0.copy()
     Xk = X.copy()
-    t, omega = 1., 0.
+    if accelerated:
+        prox_f_ = utils.AcceleratedProxF(prox_f)
+    else:
+        if relax is None:
+            relax = 1
+        prox_f_ = utils.AcceleratedProxF(prox_f, relax=relax)
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(0, X=X, step_f=step_f, omega=omega)
+        tr.update_history(0, X=X, step_f=step_f, omega=prox_f_.omega)
 
     for it in range(max_iter):
 
-        X = prox_f(X, step_f)
-
-        # Nesterov acceleration
-        if accelerated:
-            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
-            omega = (t - 1)/t_
-            t = t_
-        else:
-            omega = relax - 1 # limited to < 0.5 !
-
-        X += omega*(X - Xk)
+        X = prox_f_(X, step_f)
 
         if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, omega=omega)
+            tr.update_history(it+1, X=X, step_f=step_f, omega=prox_f_.omega)
 
         # test for fixed point convergence
         if utils.l2sq(X - Xk) <= e_rel**2*utils.l2sq(X):
@@ -59,7 +53,7 @@ def pgm(X0, prox_f, step_f, accelerated=True, relax=1, e_rel=1e-6, max_iter=1000
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True, e_rel=1e-6, max_iter=1000, traceback=False):
+def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Alternating Direction Method of Multipliers
 
@@ -78,27 +72,28 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True,
     X,Z,U = utils.initXZU(X0, _L)
     Xk = X.copy()
     it = 0
-    t, omega = 1., 0.
+
+    if accelerated and prox_g is None:
+        prox_f_ = utils.AcceleratedProxF(prox_f)
+    else:
+        if accelerated:
+            logger.warning("Ignoring acceleration because of prox_g")
+            accelerated = False
+        relax = 1
+        prox_f_ = utils.AcceleratedProxF(prox_f, relax=relax)
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(it, X=X, step_f=step_f, omega=omega, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_g=step_g)
+        tr.update_history(it, X=X, step_f=step_f, omega=prox_f_.omega, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_g=step_g)
 
     while it < max_iter:
 
         # Update the variables, return LX and primal/dual residual
-        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
-
-        # Nesterov acceleration
-        if accelerated:
-            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
-            omega = (t - 1)/t_
-            X += omega*(X - Xk)
-            t = t_
+        LX, R, S = utils.update_variables(X, Z, U, prox_f_, step_f, prox_g, step_g, _L)
 
         # Optionally store the variables in the history
         if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, omega=omega, Z=Z, U=U, R=R, S=S,  step_g=step_g)
+            tr.update_history(it+1, X=X, step_f=step_f, omega=prox_f_.omega, Z=Z, U=U, R=R, S=S,  step_g=step_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
@@ -119,17 +114,14 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True,
                     tr.reset()
 
                     X,Z,U  = utils.initXZU(X0, _L)
-                    logger.warning("Restarting with step_f = %.3f" % step_f)
-                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
-                                      step_f=step_f, step_g=step_g)
-
                     if accelerated:
-                        t = 1.
-                        omega = 0.
+                        prox_f_.t = 1.
+                        prox_f_.omega = 0.
+                    logger.warning("Restarting with step_f = %.3f" % step_f)
+                    tr.update_history(it, X=X, omega=prox_f_.omega, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_f=step_f, step_g=step_g)
 
             Rk = R
         Xk = X.copy() # used for acceleration and non-convergence test
-
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
@@ -141,7 +133,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=True,
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=True, e_rel=1e-6, max_iter=1000, traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=False, e_rel=1e-6, max_iter=1000, traceback=False):
 
     """Implement Simultaneous-Direction Method of Multipliers
 
@@ -164,7 +156,11 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
 
     # fall-back to simple ADMM
     if proxs_g is None or not hasattr(proxs_g, '__iter__'):
-        return admm(X0, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
+        return admm(X0, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, accelerated=accelerated, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
+
+    if accelerated:
+        logger.warning("Ignoring acceleration because of proxs_g")
+        accelerated = False
 
     # from here on we know that proxs_g is a list
     M = len(proxs_g)
@@ -192,8 +188,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
     Xk = X.copy()
-    it = 0
-    t, omega = 1., 0.
+    it, omega = 0, 0
 
     if traceback:
         tr = utils.Traceback()
@@ -205,13 +200,6 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
 
         # update the variables
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
-
-        # Nesterov acceleration
-        if accelerated:
-            t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
-            omega = (t - 1)/t_
-            X += omega*(X - Xk)
-            t = t_
 
         if traceback:
             tr.update_history(it+1, X=X, step_f=step_f, omega=omega)
@@ -237,7 +225,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
                 tr.reset()
 
                 X,Z,U  = utils.initXZU(X0, _L)
-                tr.update_history(it, X=X, step_f=step_f)
+                tr.update_history(it, X=X, step_f=step_f, omega=omega)
                 tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
                                   S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
                 logger.warning("Restarting with step_f = %.3f" % step_f)
@@ -256,7 +244,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Tr
 
 
 def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
-         accelerated=True, max_iter=1000, e_rel=1e-6, traceback=False, update='cascade',  update_order=None, steps_g_update='steps_f'):
+         accelerated=False, max_iter=1000, e_rel=1e-6, traceback=False, update='cascade',  update_order=None, steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
 
     proxs_f must have signature prox(X,step, j=None, Xs=None)

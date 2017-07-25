@@ -158,6 +158,27 @@ class Traceback(object):
                 for m in range(M):
                     self._store_variable(j, k, m, v[m])
 
+class AcceleratedProxF(object):
+    # Nesterov acceleration for proximal gradient operators
+    def __init__(self, prox_f, relax=None):
+        self.prox_f = prox_f
+        self.t = 1.
+        self.omega = 0.
+        if relax is not None:
+            assert relax < 1.5
+            self.omega = relax - 1 # limited to < 0.5 !
+        self.relax = relax
+
+
+    def __call__(self, X, step):
+        X_ = self.prox_f(X, step)
+        if self.relax is None:
+            t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
+            self.omega = (self.t - 1)/t_
+            self.t = t_
+        X_ += self.omega*(X_ - X)
+        return X_
+
 def initXZU(X0, L):
     X = X0.copy()
     if not isinstance(L, list):
@@ -232,8 +253,9 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
             # fall back to simple fixed-point method for f
             # see do_the_mm for normal definitions of LX,Z,R,S
             S = -X.copy()
-            Z[:] = X[:] = prox_f(X, step_f)
+            X[:] = prox_f(X, step_f)
             LX = X
+            Z[:] = X[:]
             R = np.zeros_like(X)
             S += X
 
