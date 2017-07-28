@@ -22,20 +22,33 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
     if accelerated:
         prox_f_ = utils.AcceleratedProxF(prox_f)
     else:
-        if relax is None:
-            relax = 1
-        prox_f_ = utils.AcceleratedProxF(prox_f, relax=relax)
+        prox_f_ = prox_f
+
+    if relax is not None:
+        assert relax < 1.5
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(0, X=X, step_f=step_f, omega=prox_f_.omega)
+        tr.update_history(0, X=X, step_f=step_f)
+        if accelerated:
+            tr.update_history(0, omega=prox_f_.omega)
+        if relax is not None:
+            tr.update_history(0, relax=relax)
+
 
     for it in range(max_iter):
 
         X = prox_f_(X, step_f)
 
+        if relax is not None:
+            X += (relax-1)*(X - Xk)
+
         if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, omega=prox_f_.omega)
+            tr.update_history(it+1, X=X, step_f=step_f)
+            if accelerated:
+                tr.update_history(it+1, omega=prox_f_.omega)
+            if relax is not None:
+                tr.update_history(it+1, relax=relax)
 
         # test for fixed point convergence
         if utils.l2sq(X - Xk) <= e_rel**2*utils.l2sq(X):
@@ -79,12 +92,13 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
         if accelerated:
             logger.warning("Ignoring acceleration because of prox_g")
             accelerated = False
-        relax = 1
-        prox_f_ = utils.AcceleratedProxF(prox_f, relax=relax)
+        prox_f_ = prox_f
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(it, X=X, step_f=step_f, omega=prox_f_.omega, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_g=step_g)
+        tr.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_g=step_g)
+        if accelerated:
+            tr.update_history(it, omega=prox_f_.omega)
 
     while it < max_iter:
 
@@ -93,7 +107,9 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
 
         # Optionally store the variables in the history
         if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, omega=prox_f_.omega, Z=Z, U=U, R=R, S=S,  step_g=step_g)
+            tr.update_history(it+1, X=X, step_f=step_f, Z=Z, U=U, R=R, S=S,  step_g=step_g)
+            if accelerated:
+                tr.update_history(it+1, omega=prox_f_.omega)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
@@ -264,6 +280,12 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     # Set up
     N = len(X0s)
 
+    if accelerated and proxs_g is not None:
+        logger.warning("Ignoring acceleration because of proxs_g")
+        accelerated = False
+    if accelerated:
+        proxs_f_acc = [utils.AcceleratedProxF(None) for j in range(N)]
+
     # allow proxs_g to be None
     if proxs_g is None:
         proxs_g = [proxs_g] * N
@@ -344,14 +366,15 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
     it = 0
-    t, omega = 1., [0.] * N
     delta, l, Lmax = 0.999, 0, np.empty(N)
 
     if traceback:
         tr = utils.Traceback(N)
         for j in update_order:
-            tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j], omega=omega)
+            tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
             tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=np.zeros_like(Z[j]), S=[np.zeros_like(X[j]) for n in range(M[j])])
+            if accelerated:
+                tr.update_history(it, j=j, omega=proxs_f_acc[j].omega)
 
     while it < max_iter:
 
@@ -361,13 +384,24 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
         else:
             X_ = X
 
-        # acceleration parameter
-        t_ = 0.5*(1 + np.sqrt(4*t*t + 1))
-
         # iterate over blocks X_j
         for j in update_order:
             proxs_f_j = partial(proxs_f, j=j, Xs=X_)
             steps_f_j = steps_f_cb(j, X_) * slack[j]
+
+            if accelerated:
+                proxs_f_acc[j].prox_f = proxs_f_j
+                proxs_f_j_ = proxs_f_acc[j]
+                # making sure that no block gets 1/Lipschitz speeds:
+                # Xu & Yin (2015, eq. 3.5)
+                #Lmax[j] = max(l, 1./steps_f_j)
+                #proxs_f_acc[j].omega = min(proxs_f_acc[j].omega, delta*np.sqrt(l/Lmax[j]))
+                #print (it,j,"%.4f\t%.4f\t%.4f" % (proxs_f_acc[j].omega, l, 1./steps_f_j))
+                # need to save omega here because it'll be updated in __call__
+                if traceback:
+                    tr.update_history(it+1, j=j, omega=proxs_f_acc[j].omega)
+            else:
+                proxs_f_j_ = proxs_f_j
 
             # update steps_g relative to change of steps_f ...
             if steps_g_update.lower() == 'relative':
@@ -380,14 +414,7 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
                     steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], N=N, M=M[j])
 
             # update the variables
-            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
-
-            # Nesterov acceleration
-            if accelerated:
-                omega[j] = (t - 1)/t_
-                Lmax[j] = max(l, 1./steps_f[j])
-                omega[j] = min(omega[j], delta*np.sqrt(l/Lmax[j]))
-                X_[j] += omega[j]*(X_[j] - Xk[j])
+            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j_, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
 
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
@@ -405,7 +432,6 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
 
         it += 1
         Xk = [X[j].copy() for j in range(N)]
-        t = t_
         l = Lmax.min()
 
     if it+1 >= max_iter:

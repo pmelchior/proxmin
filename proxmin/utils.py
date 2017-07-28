@@ -160,24 +160,24 @@ class Traceback(object):
 
 class AcceleratedProxF(object):
     # Nesterov acceleration for proximal gradient operators
-    def __init__(self, prox_f, relax=None):
+    def __init__(self, prox_f):
         self.prox_f = prox_f
         self.t = 1.
         self.omega = 0.
-        if relax is not None:
-            assert relax < 1.5
-            self.omega = relax - 1 # limited to < 0.5 !
-        self.relax = relax
-
+        self.Xk_1 = None
 
     def __call__(self, X, step):
-        X_ = self.prox_f(X, step)
-        if self.relax is None:
-            t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
-            self.omega = (self.t - 1)/t_
-            self.t = t_
-        X_ += self.omega*(X_ - X)
-        return X_
+        if self.omega > 0 and self.Xk_1 is not None:
+            X_ = X + self.omega*(X - self.Xk_1)
+        else:
+            X_ = X
+
+        t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
+        self.omega = (self.t - 1)/t_
+        self.t = t_
+        self.Xk_1 = X.copy()
+
+        return self.prox_f(X_, step)
 
 def initXZU(X0, L):
     X = X0.copy()

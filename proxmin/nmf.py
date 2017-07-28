@@ -34,7 +34,7 @@ def prox_likelihood(X, step, Xs=None, j=None, Y=None, W=None,
         return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=W)
 
 class Steps_AS:
-    def __init__(self, slack=0.5, Wmax=1):
+    def __init__(self, slack=0.9, Wmax=1):
         """Helper class to compute the Lipschitz constants of grad f.
 
         Because the spectral norm is expensive to compute, it will only update
@@ -78,14 +78,14 @@ class Steps_AS:
         return self.slack / self.stored[j]
 
 def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus,
-        proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, traceback=False):
+        proxs_g=None, steps_g=None, Ls=None, update_order=None, accelerated=False, steps_g_update='steps_f', slack=1, max_iter=1000, e_rel=1e-3, traceback=False):
 
     # create stepsize callback, needs max of W
     if W is not None:
         Wmax = W.max()
     else:
         W = Wmax = 1
-    steps_f = Steps_AS(Wmax=Wmax)
+    steps_f = Steps_AS(Wmax=Wmax, slack=slack)
 
     # gradient step, followed by direct application of prox_S or prox_A
     from functools import partial
@@ -93,7 +93,7 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
 
     Xs = [A0, S0]
     res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls,
-                          update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
+                          update_order=update_order, steps_g_update=steps_g_update, accelerated=accelerated, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
 
     if not traceback:
         return res[0], res[1]
