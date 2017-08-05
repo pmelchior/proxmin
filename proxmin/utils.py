@@ -215,13 +215,14 @@ def do_the_mm(X, step_f, Z, U, prox_g, step_g, L):
     U[:] += R
     return LX, R, S
 
-def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
+def update_variables(Xs, j, Z, U, prox_f, step_f, prox_g, step_g, L):
     """Update the primal and dual variables
 
     Note: X, Z, U are updated inline
 
     Returns: LX, R, S
     """
+    X = Xs[j]
     if not hasattr(prox_g, '__iter__'):
         if prox_g is not None:
             dX = step_f/step_g * L.T.dot(L.dot(X) - Z + U)
@@ -231,7 +232,7 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
             # fall back to simple fixed-point method for f
             # see do_the_mm for normal definitions of LX,Z,R,S
             S = -X.copy()
-            Z[:] = X[:] = prox_f(X, step_f)
+            Z[:] = X[:] = prox_f(X, step_f, Xs=Xs)
             LX = X
             R = np.zeros_like(X)
             S += X

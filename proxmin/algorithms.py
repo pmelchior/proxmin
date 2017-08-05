@@ -357,7 +357,6 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
     it = 0
-
     if traceback:
         tr = utils.Traceback(N)
         for j in update_order:
@@ -367,13 +366,11 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
                               S=[np.zeros_like(X[j]) for n in range(M[j])])
 
     while it < max_iter:
-
         # cascading or blocking updates?
         if update.lower() == 'block':
             X_ = [X[j].copy() for j in range(N)]
         else:
             X_ = X
-
         # iterate over blocks X_j
         for j in update_order:
             proxs_f_j = partial(proxs_f, j=j, Xs=X_)
@@ -388,9 +385,8 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             if steps_g_update.lower() == 'steps_f':
                 for i in range(M[j]):
                     steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], N=N, M=M[j])
-
             # update the variables
-            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j],
+            LX[j], R[j], S[j] = utils.update_variables(X_, j, Z[j], U[j], proxs_f_j, steps_f[j],
                                                        proxs_g[j], steps_g_[j], _L[j])
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
