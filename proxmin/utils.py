@@ -209,7 +209,7 @@ def do_the_mm(X, step_f, Z, U, prox_g, step_g, L):
     Z_ = prox_g(LX + U, step_g)
     # primal and dual errors
     R = LX - Z_
-    S = -step_f/step_g * L.T.dot(Z_ - Z)
+    S = -1/step_g * L.T.dot(Z_ - Z)
     Z[:] = Z_[:] # force the copy
     # this uses relaxation parameter of 1
     U[:] += R
@@ -247,18 +247,20 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
             LX[i], R[i], S[i] = do_the_mm(X, step_f, Z[i], U[i], prox_g[i], step_g[i], L[i])
     return LX, R, S
 
-def get_variable_errors(L, LX, Z, U, e_rel):
+def get_variable_errors(X, L, LX, Z, U, step_g, e_rel, e_abs=0):
     """Get the errors in a single multiplier method step
 
     For a given linear operator A, (and its dot product with X to save time),
     calculate the errors in the prime and dual variables, used by the
     Boyd 2011 Section 3 stopping criteria.
     """
-    e_pri2 = e_rel**2*np.max([l2sq(LX), l2sq(Z)])
-    e_dual2 = e_rel**2*l2sq(L.T.dot(U))
+    p = X.size
+    n = Z.size
+    e_pri2 = np.sqrt(p)*e_abs + e_rel*np.max([l2(LX), l2(Z)])
+    e_dual2 = np.sqrt(n)*e_abs + e_rel*l2(L.T.dot(U)/step_g)
     return e_pri2, e_dual2
 
-def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
+def check_constraint_convergence(X, L, LX, Z, U, R, S, step_f, step_g, e_rel, e_abs):
     """Calculate if all constraints have converged.
 
     Using the stopping criteria from Boyd 2011, Sec 3.3.1, calculate whether the
@@ -271,18 +273,18 @@ def check_constraint_convergence(L, LX, Z, U, R, S, e_rel):
         errors = []
         # recursive call
         for i in range(M):
-            c, e = check_constraint_convergence(L[i], LX[i], Z[i], U[i], R[i], S[i], e_rel)
+            c, e = check_constraint_convergence(X, L[i], LX[i], Z[i], U[i], R[i], S[i],
+                                                step_f, step_g[i], e_rel, e_abs)
             convergence &= c
             errors.append(e)
         return convergence, errors
     else:
         # check convergence of prime residual R and dual residual S
-        e_pri2, e_dual2 = get_variable_errors(L, LX, Z, U, e_rel)
-        lR2 = l2sq(R)
-        lS2 = l2sq(S)
-        convergence = ((lR2 <= e_pri2 or np.isclose(lR2, e_pri2, atol=e_rel**2)) and
-                       (lS2 <= e_dual2 or np.isclose(lS2, e_dual2, atol=e_rel**2)))
-        return convergence, (e_pri2, e_dual2, lR2, lS2)
+        e_pri, e_dual = get_variable_errors(X, L, LX, Z, U, step_g, e_rel, e_abs)
+        lR = l2(R)
+        lS = l2(S)
+        convergence = (lR <= e_pri) and (lS <= e_dual)
+        return convergence, (e_pri, e_dual, lR, lS)
 
 def check_convergence(newX, oldX, e_rel):
     """Check that the algorithm converges using Langville 2014 criteria

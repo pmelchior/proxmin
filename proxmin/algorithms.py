@@ -119,7 +119,8 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, max_i
             tr.update_history(it+1, X=X, Z=Z, U=U, R=R, S=S, step_f=step_f, step_g=step_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
+        convergence, error = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
+                                                                step_f, step_g, e_rel, e_abs)
 
         if convergence:
             break
@@ -221,7 +222,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, ma
             tr.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, errors = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
+        convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
+                                                                 step_f, steps_g, e_rel, e_abs)
 
         if convergence:
             break
@@ -259,7 +261,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, ma
 
 
 def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
-         max_iter=1000, e_rel=1e-6, traceback=False, update='cascade',  update_order=None, steps_g_update='steps_f'):
+         max_iter=1000, e_rel=1e-6, traceback=False, update='cascade', 
+         update_order=None, steps_g_update='steps_f', e_abs=0):
     """General Linearized Method of Multipliers.
 
     proxs_f must have signature prox(X,step, j=None, Xs=None)
@@ -286,6 +289,8 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
+    if np.isscalar(e_abs):
+        e_abs = [e_abs] * N
     steps_f = [None] * N
 
     assert update.lower() in ['cascade', 'block']
@@ -393,7 +398,9 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j],
                                                        proxs_g[j], steps_g_[j], _L[j])
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
+            convergence[j], errors[j] = utils.check_constraint_convergence(X_[j], _L[j], LX[j], Z[j], U[j],
+                                                                           R[j], S[j], steps_f[j],
+                                                                           steps_g_[j], e_rel[j], e_abs[j])
             # Optionally update the new state
             if traceback:
                 tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
