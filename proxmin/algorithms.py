@@ -366,10 +366,13 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     if traceback:
         tr = utils.Traceback(N)
         for j in update_order:
+            if M[j]>0:
+                _S = [np.zeros_like(X[j]) for n in range(M[j])]
+            else:
+                _S = np.zeros_like(X[j])
             tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
             tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
-                              R=np.zeros_like(Z[j]),
-                              S=[np.zeros_like(X[j]) for n in range(M[j])])
+                              R=np.zeros_like(Z[j]), S=_S)
 
     while it < max_iter:
 

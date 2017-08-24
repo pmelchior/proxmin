@@ -257,7 +257,10 @@ def get_variable_errors(X, L, LX, Z, U, step_g, e_rel, e_abs=0):
     p = X.size
     n = Z.size
     e_pri2 = np.sqrt(p)*e_abs + e_rel*np.max([l2(LX), l2(Z)])
-    e_dual2 = np.sqrt(n)*e_abs + e_rel*l2(L.T.dot(U)/step_g)
+    if step_g is not None:
+        e_dual2 = np.sqrt(n)*e_abs + e_rel*l2(L.T.dot(U)/step_g)
+    else:
+        e_dual2 = np.sqrt(n)*e_abs + e_rel*l2(L.T.dot(U))
     return e_pri2, e_dual2
 
 def check_constraint_convergence(X, L, LX, Z, U, R, S, step_f, step_g, e_rel, e_abs):
