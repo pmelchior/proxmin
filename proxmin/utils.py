@@ -31,13 +31,15 @@ class MatrixAdapter(object):
         if isinstance(L, MatrixAdapter):
             self.L = L.L
             self.axis = L.axis
+            self.spec_norm = L.spec_norm
+
         else:
             self.L = L
             self.axis = axis
-        if self.L is not None:
-            self.spec_norm = get_spectral_norm(self.L)
-        else:
-            self.spec_norm = 1
+            if self.L is not None:
+                self.spec_norm = get_spectral_norm(self.L)
+            else:
+                self.spec_norm = 1
 
     @property
     def T(self):
