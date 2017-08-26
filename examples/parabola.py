@@ -179,7 +179,7 @@ if __name__ == "__main__":
     max_iter = 100
 
     # step sizes and proximal operators for boundary
-    step_f = 0.01#steps_f12()
+    step_f = steps_f12()
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
 
