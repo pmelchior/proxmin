@@ -89,7 +89,7 @@ class Steps_AS:
 
 def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus,
         proxs_g=None, steps_g=None, Ls=None, slack=0.9, update_order=None, steps_g_update='steps_f',
-        max_iter=1000, e_rel=1e-3, traceback=False, e_abs=0):
+        max_iter=1000, e_rel=1e-3, e_abs=0, traceback=False):
 
     # create stepsize callback, needs max of W
     if W is not None:
@@ -103,9 +103,9 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
     f = partial(prox_likelihood, Y=Y, W=W, prox_S=prox_S, prox_A=prox_A)
 
     Xs = [A0, S0]
-    res = algorithms.glmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls,
-                          update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter,
-                          e_rel=e_rel, e_abs=e_abs, traceback=traceback)
+    res = algorithms.bsdmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls,
+                           update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter,
+                           e_rel=e_rel, e_abs=e_abs, traceback=traceback)
 
     if not traceback:
         return res[0], res[1]

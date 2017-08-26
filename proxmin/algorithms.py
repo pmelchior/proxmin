@@ -256,7 +256,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         return X, tr
 
 
-def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
+def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
          max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False, update='cascade',
          update_order=None, steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
