@@ -179,7 +179,7 @@ if __name__ == "__main__":
     max_iter = 100
 
     # step sizes and proximal operators for boundary
-    step_f = steps_f12()
+    step_f = 0.01#steps_f12()
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
 
@@ -232,5 +232,5 @@ if __name__ == "__main__":
         x, tr = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
         plotResults(tr, "GLMM direct", boundary=boundary)
 
-        x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, accelerated=True, max_iter=max_iter, traceback=True)
+        x, tr = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, accelerated=True, max_iter=max_iter, traceback=True)
         plotResults(tr, "GLMM direct accelerated", boundary=boundary)

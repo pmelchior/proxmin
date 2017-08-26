@@ -133,7 +133,10 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
                         prox_f_.t = 1.
                         prox_f_.omega = 0.
                     logger.warning("Restarting with step_f = %.3f" % step_f)
-                    tr.update_history(it, X=X, omega=prox_f_.omega, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_f=step_f, step_g=step_g)
+                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_f=step_f, step_g=step_g)
+                    if accelerated:
+                        tr.update_history(it, omega=prox_f_.omega)
+
 
             Rk = R
         Xk = X.copy() # used for acceleration and non-convergence test
@@ -219,8 +222,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Fa
             tr.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
-                                                                 step_f, steps_g, e_rel, e_abs)
+        convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g, e_rel, e_abs)
 
         if convergence:
             break
@@ -239,9 +241,12 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Fa
                 tr.reset()
 
                 X,Z,U  = utils.initXZU(X0, _L)
-                tr.update_history(it, X=X, step_f=step_f, omega=omega)
+                tr.update_history(it, X=X, step_f=step_f)
                 tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
                                   S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
+                if accelerated:
+                    tr.update_history(it, omega=prox_f_.omega)
+
                 logger.warning("Restarting with step_f = %.3f" % step_f)
 
         Rk = R
@@ -424,6 +429,9 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             if traceback:
                 tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
                 tr.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
+                if accelerated:
+                    tr.update_history(it+1, omega=proxs_f_j_.omega)
+
 
         if update.lower() == 'block':
             for j in range(N):
