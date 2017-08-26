@@ -11,11 +11,11 @@ print('Packages:', packages)
 setup(
   name = 'proxmin',
   packages = packages,
-  version = '0.1',
-  long_description = 'General Linearized Method of Multipliers for constrained optimization',
-  author = 'Fred Moolekamp and Peter Melchior',
-  author_email = 'fred.moolekamp@gmail.com',
-  url = 'https://github.com/fred3m/proxmin',
-  keywords = ['proximal', 'minimization', 'data analysis', 'constraint'],
-  include_package_data=True
+  version = '0.2',
+  long_description = 'Proximal methods for constrained optimization',
+  author = 'Peter Melchior and Fred Moolekamp',
+  author_email = 'peter.m.melchior@gmail.com',
+  url = 'https://github.com/pmelchior/proxmin',
+  keywords = ['optimization', 'constrained optimization', 'proximal algorithms', 'data analysis'],
+  include_package_data=False
 )
