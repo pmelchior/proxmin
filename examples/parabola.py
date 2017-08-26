@@ -216,20 +216,20 @@ if __name__ == "__main__":
     x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
     plotResults(tr, "SDMM", boundary=boundary)
 
-    # GLMM
+    # Block-SDMM
     XY = [np.array([xy[0]]), np.array([xy[1]])]
     if boundary == "line":
         N = 2
         M1 = 7
         M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-        x, tr = pa.glmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
+        x, tr = pa.bsdmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
         plotResults(tr, "GLMM", boundary=boundary)
 
         # GLMM with direct constraint projection
         prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
         prox_g_direct = None
-        x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
+        x, tr = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
         plotResults(tr, "GLMM direct", boundary=boundary)
 
         x, tr = pa.glmm(XY, prox_gradf12_, steps_f12, prox_g_direct, accelerated=True, max_iter=max_iter, traceback=True)

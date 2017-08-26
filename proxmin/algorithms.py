@@ -66,7 +66,7 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False, e_rel=1e-6, max_iter=1000, traceback=False):
+def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=False):
 
     """Alternating Direction Method of Multipliers
 
@@ -75,11 +75,9 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
 
     # use matrix adapter for convenient & fast notation
     _L = utils.MatrixAdapter(L)
-    # determine spectral norm of matrix
-    norm_L2 = utils.get_spectral_norm(_L.L)
     # get/check compatible step size for g
     if prox_g is not None and step_g is None:
-        step_g = utils.get_step_g(step_f, norm_L2)
+        step_g = utils.get_step_g(step_f, _L.spec_norm)
 
     # init
     X,Z,U = utils.initXZU(X0, _L)
@@ -112,7 +110,8 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
                 tr.update_history(it+1, omega=prox_f_.omega)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, error = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
+        convergence, error = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
+                                                                step_f, step_g, e_rel, e_abs)
 
         if convergence:
             break
@@ -149,7 +148,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=False, e_rel=1e-6, max_iter=1000, traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=False, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=False):
 
     """Implement Simultaneous-Direction Method of Multipliers
 
@@ -193,13 +192,11 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Fa
     # get/check compatible step sizes for g
     # use matrix adapter for convenient & fast notation
     _L = []
-    norm_L2 = []
     for i in range(M):
         _L.append(utils.MatrixAdapter(Ls[i]))
-        norm_L2.append(utils.get_spectral_norm(_L[i].L))
         # get/check compatible step size for g
         if steps_g[i] is None:
-            steps_g[i] = utils.get_step_g(step_f, norm_L2[i], M=M)
+            steps_g[i] = utils.get_step_g(step_f, _L[i].spec_norm, M=M)
 
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
@@ -222,7 +219,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Fa
             tr.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, errors = utils.check_constraint_convergence(_L, LX, Z, U, R, S, e_rel)
+        convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
+                                                                 step_f, steps_g, e_rel, e_abs)
 
         if convergence:
             break
@@ -259,8 +257,9 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, accelerated=Fa
         return X, tr
 
 
-def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
-         accelerated=False, max_iter=1000, e_rel=1e-6, traceback=False, update='cascade',  update_order=None, steps_g_update='steps_f'):
+def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
+         accelerated=False, max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False, update='cascade',
+         update_order=None, steps_g_update='steps_f'):
     """General Linearized Method of Multipliers.
 
     proxs_f must have signature prox(X,step, j=None, Xs=None)
@@ -293,6 +292,8 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
+    if np.isscalar(e_abs):
+        e_abs = [e_abs] * N
     steps_f = [None] * N
 
     assert update.lower() in ['cascade', 'block']
@@ -340,16 +341,13 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     # need container for current-iteration steps_g and matrix adapters
     steps_g_ = []
     _L = []
-    norm_L2 = []
     for j in range(N):
         if proxs_g[j] is None:
             steps_g_.append(None)
             _L.append(utils.MatrixAdapter(None))
-            norm_L2.append(1)
         else:
             steps_g_.append([[None] for i in range(M[j])])
             _L.append([ utils.MatrixAdapter(Ls[j][m]) for m in range(M[j])])
-            norm_L2.append([ utils.get_spectral_norm(_L[j][m].L) for m in range(M[j])])
 
     # Initialization
     X, Z, U = [],[],[]
@@ -371,6 +369,10 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
     if traceback:
         tr = utils.Traceback(N)
         for j in update_order:
+            if M[j]>0:
+                _S = [np.zeros_like(X[j]) for n in range(M[j])]
+            else:
+                _S = np.zeros_like(X[j])
             tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
             tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=np.zeros_like(Z[j]), S=[np.zeros_like(X[j]) for n in range(M[j])])
             if accelerated:
@@ -411,13 +413,13 @@ def glmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             # ... or update them as required by the most conservative limit
             if steps_g_update.lower() == 'steps_f':
                 for i in range(M[j]):
-                    steps_g_[j][i] = utils.get_step_g(steps_f[j], norm_L2[j][i], N=N, M=M[j])
+                    steps_g_[j][i] = utils.get_step_g(steps_f[j], _L[j][i].spec_norm, N=N, M=M[j])
 
             # update the variables
             LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j_, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
 
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(_L[j], LX[j], Z[j], U[j], R[j], S[j], e_rel[j])
+            convergence[j], errors[j] = utils.check_constraint_convergence(X_[j], _L[j], LX[j], Z[j], U[j], R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
             # Optionally update the new state
             if traceback:
                 tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
