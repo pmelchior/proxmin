@@ -111,7 +111,7 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
             See Steps_AS() for details.
         update_order: list of factor indices in update order
             j=0 -> A, j=1 -> S
-        max_iter: maximum iteration number, independent of current residuals
+        max_iter: maximum iteration number, irrespective of current residuals
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
         traceback: whether a record of all optimization variables is kept

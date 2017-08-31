@@ -12,6 +12,19 @@ def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=Fal
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4
+
+    Args:
+        X0: initial X
+        prox_f: proxed function f (the forward-backward step)
+        step_f: step size, < 1/L with L being the Lipschitz constant of grad f
+        relax: (over)relaxation parameter, < 1.5
+        e_rel: relative error of X
+        max_iter: maximum iteration, irrespective of residual error
+        traceback: whether a record of all optimization variables is kept
+
+    Returns:
+        X: optimized value
+        X, trace: adds utils.Traceback if traceback is True
     """
     X = X0.copy()
     Z = X0.copy()
@@ -48,7 +61,19 @@ def pgm(X0, prox_f, step_f, relax=1.49, e_rel=1e-6, max_iter=1000, traceback=Fal
 def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
     """Accelerated Proximal Gradient Method
 
-    Adapted from Combettes 2009, Algorithm 3.6
+    Adapted from Combettes 2009, Algorithm 3.6, with Nesterov acceleration
+
+    Args:
+        X0: initial X
+        prox_f: proxed function f (the forward-backward step)
+        step_f: step size, < 1/L with L being the Lipschitz constant of grad f
+        e_rel: relative error of X
+        max_iter: maximum iteration, irrespective of residual error
+        traceback: whether a record of all optimization variables is kept
+
+    Returns:
+        X: optimized value
+        X, trace: adds utils.Traceback if traceback is True
     """
     X = X0.copy()
     Z = X0.copy()
@@ -89,7 +114,28 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
 def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0,  max_iter=1000, traceback=False):
     """Alternating Direction Method of Multipliers
 
-    Adapted from Parikh and Boyd (2009).
+    This method implements the linearized ADMM from Parikh & Boyd (2014).
+
+    Args:
+        X0: initial X
+        prox_f: proxed function f
+        step_f: step size for prox_f
+        prox_g: proxed function g
+        step_g: specific value of step size for prox_g (experts only!)
+            By default, set to the maximum value of step_f * ||L||_s^2.
+        L: linear operator of the argument of g.
+            Matrix can be numpy.array, scipy.sparse, or None (for identity).
+        e_rel: relative error threshold for primal and dual residuals
+        e_abs: absolute error threshold for primal and dual residuals
+        max_iter: maximum iteration number, irrespective of current residuals
+        traceback: whether a record of all optimization variables is kept
+
+    Returns:
+        X: optimized value
+        X, trace: adds utils.Traceback if traceback is True
+
+    Reference:
+        Moolekamp & Melchior, Algorithm 1 (arXiv:1708.09066)
     """
 
     # use matrix adapter for convenient & fast notation
@@ -152,24 +198,35 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
 
 
 def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=False):
+    """Simultaneous-Direction Method of Multipliers
 
-    """Implement Simultaneous-Direction Method of Multipliers
+    This method is an extension of the linearized ADMM for multiple constraints.
 
-    This implements the SDMM algorithm derived from Algorithm 7.9 from Combettes and Pesquet (2009),
-    Section 4.4.2 in Parikh and Boyd (2013), and Eq. 2.2 in Andreani et al. (2007).
+    Args:
+        X0: initial X
+        prox_f: proxed function f
+        step_f: step size for prox_f
+        proxs_g: list of proxed functions
+        steps_g: specific value of step size for proxs_g (experts only!)
+            If set, needs to have same format as proxs_g.
+            By default, set to the maximum value of step_f * ||L_i||_s^2.
+        Ls: linear operators of the argument of g_i.
+            If set, needs to have same format as proxs_g.
+            Matrices can be numpy.array, scipy.sparse, or None (for identity).
+        e_rel: relative error threshold for primal and dual residuals
+        e_abs: absolute error threshold for primal and dual residuals
+        max_iter: maximum iteration number, irrespective of current residuals
+        traceback: whether a record of all optimization variables is kept
 
-    In Combettes and Pesquet (2009) they use a matrix inverse to solve the problem.
-    In our case that is the inverse of a sparse matrix, which is no longer sparse and too
-    costly to implement.
-    The `scipy.sparse.linalg` module does have a method to solve a sparse matrix equation,
-    using Algorithm 7.9 directly still does not yield the correct result,
-    as the treatment of penalties due to constraints are on equal footing with our likelihood
-    proximal operator and require a significant change in the way we calculate step sizes to converge.
+    Returns:
+        X: optimized value
+        X, trace: adds utils.Traceback if traceback is True
 
-    Instead we calculate the constraint vectors (as in SDMM) but extend the update of the ``X`` matrix
-    using a modified version of the ADMM X update function (from Parikh and Boyd, 2009),
-    using an augmented Lagrangian for multiple linear constraints as given in Andreani et al. (2007).
+    See also:
+        algorithms.admm
 
+    Reference:
+        Moolekamp & Melchior, Algorithm 2 (arXiv:1708.09066)
     """
 
     # fall-back to simple ADMM
@@ -255,26 +312,60 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         return X, tr
 
 
-def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
-         max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False, update='cascade',
-         update_order=None, steps_g_update='steps_f'):
+def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update='cascade', update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False):
     """Block-Simultaneous Method of Multipliers.
 
+    This method is an extension of the linearized SDMM, i.e. ADMM for multiple
+    constraints, for functions f with several arguments.
+    The function f needs to be proper convex in every argument.
+    It performs a block optimization for each argument while propagating the
+    changes to other arguments.
 
+    Args:
+        X0s: list of initial Xs
+        proxs_f: proxed function f
+            Signature prox(X,step, j=None, Xs=None) -> X'
+        steps_f_cb: callback function to compute step size for proxs_f[j]
+            Signature: steps_f_cb(j, Xs) -> Reals
+        proxs_g: list of proxed functions
+            [[prox_X0_0, prox_X0_1...],[prox_X1_0, prox_X1_1,...],...]
+        steps_g: specific value of step size for proxs_g (experts only!)
+            If set, needs to have same format as proxs_g.
+            By default, set to the maximum value of step_f_j * ||L_i||_s^2.
+        Ls: linear operators of the argument of g_i.
+            If set, needs to have same format as proxs_g.
+            Matrices can be numpy.array, scipy.sparse, or None (for identity).
+        update: update sequence between the blocks
+            'cascade': proxs_f are evaluated sequentually,
+                       update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
+            'block':   proxs_f are evaluated independently
+                       i.e. update for X_j^{k+1} is aware of X_l^k forall l.
+        update_order: list of components to update in desired order.
+                      Only relevant if update=='cascade'.
+        steps_g_update: relation between steps_g and steps_f (experts only!)
+            'steps_f':  update steps_g as required by most conservative limit
+            'fixed':    never update initial value of steps_g
+            'relative': update initial values of steps_g propertional to changes
+                        of steps_f
+        e_rel: relative error threshold for primal and dual residuals
+        e_abs: absolute error threshold for primal and dual residuals
+        max_iter: maximum iteration number, irrespective of current residuals
+        traceback: whether a record of all optimization variables is kept
 
-    proxs_f must have signature prox(X,step, j=None, Xs=None)
-    steps_f_cb(j, Xs) -> Reals
-    update in ['cascade', 'block']:
-        cascade: proxs_f are evaluated sequentually,
-                 i.e. the update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
-        block:   proxs_f are evaluated independently, i.e. update for X_j^{k+1}
-                 is aware of X_l^k forall l only. This approach is parallelizable.
-    update_order: list of components to update in desired order. Only relevant
-                  if update=='cascade'.
-    steps_g_update in ['steps_f', 'fixed', 'relative']:
-        steps_f:  update steps_g as required by the most conservative limit (recommended)
-        fixed:    never updated initial value of steps_g
-        relative: update initial values of steps_g propertional to changes of steps_f
+    Returns:
+        Xs: list of optimized values
+        X, trace: adds utils.Traceback if traceback is True
+
+    Warning:
+        Because of the potentially large list of optimization variables,
+        setting traceback=True may exhaust memory. It should thus be run 
+        with a sufficiently small max_iter.
+
+    See also:
+        algorithms.sdmm
+
+    Reference:
+        Moolekamp & Melchior, Algorithm 3 (arXiv:1708.09066)
     """
     # Set up
     N = len(X0s)
@@ -411,33 +502,6 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
             break
 
         it += 1
-
-        """
-        # this does not seem to be necessary and/or effective!!!
-
-        # if X and primal residual does not change: decrease step_f and step_g, and restart
-        if it > 1:
-            # perform step size update for each Xj independently
-            for j in range(N):
-                if (X[j] == X_[j]).all() and all([(R[j][i] == R_[j][i]).all() for i in range(M[j])]):
-                    slack[j] /= 2
-
-                    # re-init
-                    it = 0
-
-                    X[j],Z[j],U[j]  = utils.initXZU(X0s[j], _L[j])
-                    logger.warning("Restarting with step_f[%d] = %.3f" % (j,steps_f[j]*slack[j]))
-
-                    # TODO: Traceback needs to have offset for each j!
-                    tr.reset()
-                    tr.update_history(it, X=X[j], steps_f=steps_f[j])
-                    tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
-                                      R=np.zeros_like(Z[j]),
-                                      S=[np.zeros_like(X[j]) for n in range(M[j])])
-
-        R_ = R
-        X_ = [X[j].copy() for j in range(N)]
-        """
 
     if it+1 >= max_iter:
         logger.warning("Solution did not converge")
