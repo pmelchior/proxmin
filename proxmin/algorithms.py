@@ -87,7 +87,6 @@ def apgm(X0, prox_f, step_f, e_rel=1e-6, max_iter=1000, traceback=False):
 
 
 def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0,  max_iter=1000, traceback=False):
-
     """Alternating Direction Method of Multipliers
 
     Adapted from Parikh and Boyd (2009).
@@ -259,7 +258,9 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
 def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None,
          max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False, update='cascade',
          update_order=None, steps_g_update='steps_f'):
-    """General Linearized Method of Multipliers.
+    """Block-Simultaneous Method of Multipliers.
+
+
 
     proxs_f must have signature prox(X,step, j=None, Xs=None)
     steps_f_cb(j, Xs) -> Reals

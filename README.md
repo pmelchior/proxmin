@@ -11,7 +11,7 @@ The algorithms:
 
 In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Factorization (NMF). It allows the employment of an arbitrary number of constraints on each of the matrix factors.
 
-Details can be found in the [paper](http://arxiv.org/abs/XXXXXX) *"Block-Simultaneous Direction Method of Multipliers — A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
+Details can be found in the [paper](http://arxiv.org/abs/1708.09066) *"Block-Simultaneous Direction Method of Multipliers — A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
 The code is licensed under the permissive MIT license. We ask that any published work that utilizes this package cites the paper above. Also, let us know ([@peter_melchior](https://twitter.com/peter_melchior)), we're curious.
 
@@ -23,12 +23,12 @@ We make use of the usual setuptools, therefore to install, clone this repository
 
 ## Approach
 
-All algorithms accept functions only in their proxed form, i.e. that call the respective proximal operators. As user you have to provide the proximal operator(s) for your problem and the step size(s).
+All algorithms accept functions only in their proxed form, i.e. they call the respective proximal operators. As user you have to provide the proximal operator(s) for your problem and the step size(s).
 
 An example (minimum of a shifted parabola on the unit circle):
 
 ```python
-dx,dy,r = 1,0.5,1
+dx,dy,radius = 1,0.5,1
 
 def f(X):
     """Shifted parabola"""
@@ -72,8 +72,8 @@ def prox_gradf_circle(X, step):
     return prox_circle(prox_gradf(X,step), step)
 
 # Run proximal gradient method
-L = 2
-step_f = 1./L
+L = 2         # Lipschitz constant of grad f
+step_f = 1./L # maximum step size of smooth function: 1/L
 X0 = np.array([-1,0])
 X = pa.pgm(X0, prox_gradf_circle, step_f)
 # or with Nesterov acceleration
@@ -111,4 +111,4 @@ A, S = nmf(Y, A0, S0, proxs_g=proxs_g)
 A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
 ```
 
-For a complete example, have a look at [these notebooks](https://github.com/fred3m/hyperspectral) of a hyperspectral unmixing study.
+For a complete example, have a look at [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.
