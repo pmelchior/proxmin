@@ -26,7 +26,7 @@ def get_spectral_norm(L):
 class MatrixAdapter(object):
     """Matrix adapter to deal with None and per-component application.
     """
-    def __init__(self, L, axis=None):
+    def __init__(self, L, axis=None, spec_norm=None):
         # prevent cascade
         if isinstance(L, MatrixAdapter):
             self.L = L.L
@@ -37,7 +37,10 @@ class MatrixAdapter(object):
             self.L = L
             self.axis = axis
             if self.L is not None:
-                self.spec_norm = get_spectral_norm(self.L)
+                if spec_norm is None:
+                    self.spec_norm = get_spectral_norm(self.L)
+                else:
+                    self.spec_norm = spec_norm
             else:
                 self.spec_norm = 1
 
@@ -46,7 +49,7 @@ class MatrixAdapter(object):
         if self.L is None:
             return self # NOT: self.L !!!
         # because we need to preserve axis for dot(), create a new adapter
-        return MatrixAdapter(self.L.T, axis=self.axis)
+        return MatrixAdapter(self.L.T, axis=self.axis, spec_norm=self.spec_norm)
 
     def dot(self, X):
         if self.L is None:
