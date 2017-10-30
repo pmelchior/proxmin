@@ -3,6 +3,8 @@ from scipy.optimize import linear_sum_assignment
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+from proxmin import operators as po
+from functools import partial
 
 def generateComponent(m):
     """Creates oscillating components to be mixed"""
@@ -50,11 +52,14 @@ if __name__ == "__main__":
     trueS = np.array([generateComponent(n) for i in range(k)])
     trueY = np.dot(trueA,trueS)
     Y = add_noise(trueY, noise)
+    W = np.ones_like(Y) / noise**2
 
     # initialize and run NMF
     A0 = np.array([generateAmplitudes(k) for i in range(b)])
     S0 = np.array([generateComponent(n) for i in range(k)])
-    A, S, tr = nmf.nmf(Y, A0, S0, e_rel=1e-4, e_abs=1e-4, traceback=True)
+    p1 = partial(po.prox_unity_plus, axis=1)
+    proxs_g=[[p1], None]
+    A, S, tr = nmf.nmf(Y, A0, S0, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=True,accelerated=True)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 
@@ -90,8 +95,10 @@ if __name__ == "__main__":
 
     """
     # noise plot
-    noises = np.linspace(0,0.05,21)
-    repeat = 10
+    #noises = np.linspace(0,0.05,21)
+    #repeat = 10
+    noises = [noise]
+    repeat = 1000
     A_chi_squared = np.empty((len(noises), repeat))
     S_chi_squared = np.empty((len(noises), repeat))
     for i in range(len(noises)):
