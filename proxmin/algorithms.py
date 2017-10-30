@@ -28,7 +28,7 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
     Returns:
         X: optimized value
         X, trace: adds utils.Traceback if traceback is True
-        
+
     See also:
         utils.AcceleratedProxF
     """
@@ -105,7 +105,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
     Returns:
         X: optimized value
         X, trace: adds utils.Traceback if traceback is True
-    
+
     See also:
         utils.AcceleratedProxF
 
@@ -217,7 +217,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         X, trace: adds utils.Traceback if traceback is True
 
     See also:
-        algorithms.admm 
+        algorithms.admm
 
     Reference:
         Moolekamp & Melchior, Algorithm 2 (arXiv:1708.09066)
@@ -291,9 +291,6 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
                 tr.update_history(it, X=X, step_f=step_f)
                 tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
                                   S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
-                if accelerated:
-                    tr.update_history(it, omega=prox_f_.omega)
-
                 logger.warning("Restarting with step_f = %.3f" % step_f)
 
         Rk = R
@@ -356,7 +353,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
 
     Warning:
         Because of the potentially large list of optimization variables,
-        setting traceback=True may exhaust memory. It should thus be run 
+        setting traceback=True may exhaust memory. It should thus be run
         with a sufficiently small max_iter.
 
     See also:

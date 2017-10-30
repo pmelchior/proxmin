@@ -175,7 +175,7 @@ if __name__ == "__main__":
         if boundary not in ["line", "circle"]:
             raise ValueError("Expected either 'line' or 'circle' as an argument")
     else:
-        boundary = "circle" # "circle"
+        boundary = "circle"
     max_iter = 100
 
     # step sizes and proximal operators for boundary
@@ -183,11 +183,9 @@ if __name__ == "__main__":
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
 
-    """
     # PGM without boundary
     x, tr = pa.pgm(xy, prox_gradf, step_f, max_iter=max_iter, relax=1, traceback=True)
     plotResults(tr, "PGM no boundary")
-    """
 
     # PGM
     x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=True)
