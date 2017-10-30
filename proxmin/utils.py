@@ -150,6 +150,7 @@ class Traceback(object):
                     self.history[j][k] = [[]]
                 else:
                     self.history[j][k] = [[] for m in range(M)]
+        """
         # Check that the variables have been updated once per iteration
         elif np.any([[len(h)!=it+self.offset for h in self.history[j][k]] for k in kwargs.keys()]):
             for k in kwargs.keys():
@@ -157,7 +158,7 @@ class Traceback(object):
                     if len(h) != it+self.offset:
                         err_str = "At iteration {0}, {1}[{2}] already has {3} entries"
                         raise Exception(err_str.format(it, k, n, len(h)-self.offset))
-
+        """
         # Add the variables to the history
         for k,v in kwargs.items():
             if M is None or M == 0:
@@ -165,6 +166,27 @@ class Traceback(object):
             else:
                 for m in range(M):
                     self._store_variable(j, k, m, v[m])
+
+class AcceleratedProxF(object):
+    # Nesterov acceleration for proximal gradient operators
+    def __init__(self, prox_f):
+        self.prox_f = prox_f
+        self.t = 1.
+        self.omega = 0.
+        self.Xk_1 = None
+
+    def __call__(self, X, step):
+        if self.omega > 0 and self.Xk_1 is not None:
+            X_ = X + self.omega*(X - self.Xk_1)
+        else:
+            X_ = X
+
+        t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
+        self.omega = (self.t - 1)/t_
+        self.t = t_
+        self.Xk_1 = X.copy()
+
+        return self.prox_f(X_, step)
 
 def initXZU(X0, L):
     X = X0.copy()
@@ -240,8 +262,9 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
             # fall back to simple fixed-point method for f
             # see do_the_mm for normal definitions of LX,Z,R,S
             S = -X.copy()
-            Z[:] = X[:] = prox_f(X, step_f)
+            X[:] = prox_f(X, step_f)
             LX = X
+            Z[:] = X[:]
             R = np.zeros_like(X)
             S += X
 
