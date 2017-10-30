@@ -11,10 +11,104 @@ The algorithms:
 
 In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Factorization (NMF). It allows the employment of an arbitrary number of constraints on each of the matrix factors.
 
-Details can be found in the [paper](http://arxiv.org/abs/XXXXXX) "Block-Simultaneous Direction Method of Multipliers — A proximal splitting algorithm for multiple constraints and multiple variables" by Fred Moolekamp and Peter Melchior.
+Details can be found in the [paper](http://arxiv.org/abs/1708.09066) *"Block-Simultaneous Direction Method of Multipliers — A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
-The code is licensed under the permissive MIT license. We ask that any published work that utilizes this package cites the paper above.
+The code is licensed under the permissive MIT license. We ask that any published work that utilizes this package cites the paper above. Also, let us know ([@peter_melchior](https://twitter.com/peter_melchior)), we're curious.
 
-## Dependencies
+## Dependencies and Installation
 
 numpy and scipy
+
+We make use of the usual setuptools, therefore to install, clone this repository and execute `python setup.py install`.
+
+## Approach
+
+All algorithms accept functions only in their proxed form, i.e. they call the respective proximal operators. As user you have to provide the proximal operator(s) for your problem and the step size(s).
+
+An example (minimum of a shifted parabola on the unit circle):
+
+```python
+dx,dy,radius = 1,0.5,1
+
+def f(X):
+    """Shifted parabola"""
+    x,y = X
+    return (x-dx)**2 + (y-dy)**2
+
+def grad_fx(X):
+    """Gradient of f wrt x"""
+    xy = X
+    return 2*x - 2*dx
+
+def grad_fy(X):
+    """Gradient of f wrt y"""
+    x,y = X
+    return 2*y - 2*dy
+
+def grad_f(X):
+    """Gradient of f"""
+    return np.array([grad_fx(X),grad_fy(X)])
+  
+def prox_circle(X, step):
+    """Projection onto circle of radius r"""
+    center = np.array([0,0])
+    dxy = X - center
+    phi = np.arctan2(dxy[1], dxy[0])
+    return center + radius*np.array([np.cos(phi), np.sin(phi)])
+```
+
+Many proximal operators can be constructed analytically, see e.g. [Parikh & Boyd (2014)](https://web.stanford.edu/~boyd/papers/prox_algs.html). We provide a number of common ones in `proxmin.operators`. An important class of constraints are indicator functions of convex sets, for which the proximal operator, given some point **X**, returns the closes point to **X** in the Euclidean norm that is in the set. That is what `prox_circle` above does.
+
+If the objective function is smooth and there is only one constraint, one can simply perform a sequence of *forward-backward* steps:  step in gradient direction, followed by a projection onto the constraint.
+
+```python
+from proxmin import algorithms as pa
+def prox_gradf(X, step):
+    """Proximal gradient step"""
+    return X-step*grad_f(X)
+
+def prox_gradf_circle(X, step):
+    """Proximal torward-backward step"""
+    return prox_circle(prox_gradf(X,step), step)
+
+# Run proximal gradient method
+L = 2         # Lipschitz constant of grad f
+step_f = 1./L # maximum step size of smooth function: 1/L
+X0 = np.array([-1,0])
+X = pa.pgm(X0, prox_gradf_circle, step_f)
+# or with Nesterov acceleration
+X = pa.apgm(X0, prox_gradf_circle, step_f)  
+```
+
+If the objective function is not smooth, one can use ADMM. This also allows for two functions (the objective and one constraint ) to be satisfied, but it treats them *separately*. Unlike PGM, the constraint is only met at the end of the optimization and only within some error tolerance.
+
+```python
+X = pa.admm(X, prox_gradf, step_f, prox_circle, e_rel=1e-3, e_abs=1e-3)
+```
+
+A fully working example to demonstrate the principle of operations is [examples/parabola.py] that find the minimum of a 2D parabola under hard boundary constraints (on a shifted circle or the intersection of lines).
+
+## Non-negative matrix factorization (NMF)
+
+We have developed this package with a few application cases in mind. One is matrix factorization under constraints on the matrix factors, i.e. describing a target matrix **Y** as a product of **A S**. If those constraints are only non-negativity, the method is known as NMF.
+
+We have extended the capabilities substantially by allowing for an arbitrary number of constraints to be enforced. As above, the constraints and the objective function will be accessed through their proximal operators only.
+
+For a solver, you can simply do this:
+
+```python
+from proxmin.nmf import nmf
+# PGM-like approach for each factor
+prox_A = ... # a single constraint on A
+prox_S = ... # a single constraint on S
+A0, S0 = ... # initialization
+A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
+# for multiple constraints (or some that should only be met at the end)
+proxs_g = [[...], # list of proxs for A
+           [...]] # list of proxs for S
+A, S = nmf(Y, A0, S0, proxs_g=proxs_g)
+# or a combination
+A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
+```
+
+For a complete example, have a look at [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.
