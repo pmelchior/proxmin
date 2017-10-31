@@ -11,11 +11,11 @@ print('Packages:', packages)
 setup(
   name = 'proxmin',
   packages = packages,
-  version = '0.2',
-  long_description = 'Proximal methods for constrained optimization',
+  version = '0.3',
+  long_description = 'Proximal methods for constrained optimization, including NMF',
   author = 'Peter Melchior and Fred Moolekamp',
   author_email = 'peter.m.melchior@gmail.com',
   url = 'https://github.com/pmelchior/proxmin',
-  keywords = ['optimization', 'constrained optimization', 'proximal algorithms', 'data analysis'],
+  keywords = ['optimization', 'constrained optimization', 'proximal algorithms', 'data analysis', 'non-negative matrix factorization'],
   include_package_data=False
 )
