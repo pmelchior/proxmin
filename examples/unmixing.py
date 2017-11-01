@@ -36,8 +36,6 @@ def match(A, S, trueS):
     for t in range(k):
         resS[arrangement[1][t]] = S[arrangement[0][t]]
         resAT[arrangement[1][t]] = A.T[arrangement[0][t]]
-        #for i in range(A.shape[0]):
-        #    resA[i][arrangement[1][t]] = resA[i][arrangement[0][t]]
     return resAT.T, resS
 
 if __name__ == "__main__":
