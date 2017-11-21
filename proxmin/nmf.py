@@ -103,7 +103,7 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
 
     This method solves the NMF problem
         minimize || Y - AS ||_2^2
-    under an arbitrary number of constraints and A and/or S.
+    under an arbitrary number of constraints on A and/or S.
 
     Args:
         Y:  target matrix MxN
@@ -133,7 +133,7 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
         A, S, trace: adds utils.Traceback if traceback is True
 
     See also:
-        algorithms.bsdmm for step sizes and update sequences
+        algorithms.bsdmm for update_order and steps_g_update
         utils.AcceleratedProxF for Nesterov acceleration
 
     Reference:

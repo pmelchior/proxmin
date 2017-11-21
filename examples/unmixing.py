@@ -36,8 +36,6 @@ def match(A, S, trueS):
     for t in range(k):
         resS[arrangement[1][t]] = S[arrangement[0][t]]
         resAT[arrangement[1][t]] = A.T[arrangement[0][t]]
-        #for i in range(A.shape[0]):
-        #    resA[i][arrangement[1][t]] = resA[i][arrangement[0][t]]
     return resAT.T, resS
 
 if __name__ == "__main__":
@@ -59,7 +57,7 @@ if __name__ == "__main__":
     S0 = np.array([generateComponent(n) for i in range(k)])
     p1 = partial(po.prox_unity_plus, axis=1)
     proxs_g=[[p1], None]
-    A, S, tr = nmf.nmf(Y, A0, S0, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=True,accelerated=True)
+    A, S, tr = nmf(Y, A0, S0, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=True,accelerated=True)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 

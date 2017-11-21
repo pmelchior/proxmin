@@ -48,7 +48,7 @@ def grad_fy(X):
 def grad_f(X):
     """Gradient of f"""
     return np.array([grad_fx(X),grad_fy(X)])
-  
+
 def prox_circle(X, step):
     """Projection onto circle of radius r"""
     center = np.array([0,0])
@@ -97,13 +97,13 @@ We have extended the capabilities substantially by allowing for an arbitrary num
 For a solver, you can simply do this:
 
 ```python
-from proxmin.nmf import nmf
+from proxmin import nmf
 # PGM-like approach for each factor
-prox_A = ... # a single constraint on A
-prox_S = ... # a single constraint on S
+prox_A = ... # a single constraint on A, solved by projection
+prox_S = ... # a single constraint on S, solved by projection
 A0, S0 = ... # initialization
 A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
-# for multiple constraints (or some that should only be met at the end)
+# for multiple constraints, solved by ADMM-style split
 proxs_g = [[...], # list of proxs for A
            [...]] # list of proxs for S
 A, S = nmf(Y, A0, S0, proxs_g=proxs_g)
@@ -111,4 +111,5 @@ A, S = nmf(Y, A0, S0, proxs_g=proxs_g)
 A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
 ```
 
-For a complete example, have a look at [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.
+For a simple case, look at [examples/unmixing.py].
+A complete and practical example is given in [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.
