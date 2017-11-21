@@ -34,7 +34,7 @@ def prox_likelihood(X, step, Xs=None, j=None, Y=None, W=None,
         return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=W)
 
 class Steps_AS:
-    def __init__(self, slack=0.9, Wmax=1, max_stride=100, update_order=None):
+    def __init__(self, slack=0.9, Wmax=None, max_stride=100, update_order=None, WAmax=None, WSmax=None):
         """Helper class to compute the Lipschitz constants of grad f.
 
         Because the spectral norm is expensive to compute, it will only update
@@ -49,7 +49,18 @@ class Steps_AS:
         assert slack > 0 and slack <= 1
 
         self.slack = slack
-        self.Wmax = Wmax
+        if WAmax is None:
+            if Wmax is None:
+                WAmax = Wmax = 1
+            else:
+                WAmax = Wmax
+        if WSmax is None:
+            if Wmax is None:
+                WSmax = Wmax = 1
+            else:
+                WSmax = Wmax
+        self.WSmax = WSmax
+        self.WAmax = WAmax
         self.max_stride = max_stride
         # need to knwo when to advance the iterations counter
         if update_order is None:
@@ -67,9 +78,9 @@ class Steps_AS:
         if self.it >= self.last[j] + self.stride[j]:
             self.last[j] = self.it
             if j == 0:
-                L = utils.get_spectral_norm(Xs[1].T) * self.Wmax  # ||S*S.T||
+                L = utils.get_spectral_norm(Xs[1].T) * self.WAmax  # ||S*S.T||
             else:
-                L = utils.get_spectral_norm(Xs[0]) * self.Wmax # ||A.T * A||
+                L = utils.get_spectral_norm(Xs[0]) * self.WSmax # ||A.T * A||
             if j == self.advance_index:
                 self.it += 1
 
