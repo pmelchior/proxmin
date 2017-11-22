@@ -26,41 +26,39 @@ def prox_likelihood_A(A, step, S=None, Y=None, prox_g=None, W=1):
 def prox_likelihood_S(S, step, A=None, Y=None, prox_g=None, W=1):
     return prox_g(S - step*grad_likelihood_S(S, A, Y, W=W), step)
 
-def prox_likelihood(X, step, Xs=None, j=None, Y=None, W=None,
-                    prox_S=operators.prox_id, prox_A=operators.prox_id):
+def prox_likelihood(X, step, Xs=None, j=None, Y=None, WA=None, WS=None, prox_S=operators.prox_id, prox_A=operators.prox_id):
     if j == 0:
-        return prox_likelihood_A(X, step, S=Xs[1], Y=Y, prox_g=prox_A, W=W)
+        return prox_likelihood_A(X, step, S=Xs[1], Y=Y, prox_g=prox_A, W=WA)
     else:
-        return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=W)
+        return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=WS)
 
 class Steps_AS:
-    def __init__(self, slack=0.9, Wmax=None, max_stride=100, update_order=None, WAmax=None, WSmax=None):
+    def __init__(self, WAmax=1, WSmax=1, slack=0.9, max_stride=100, update_order=None):
         """Helper class to compute the Lipschitz constants of grad f.
+
+        The __call__ function compute the spectral norms of A or S, which
+        determine the Lipschitz constant of the respective update steps.
+
+        If a weight matrix is used, the stepsize will be upper bounded by
+        assuming the maximum value of the weights. In the case of varying
+        weights, it is generally advised to normalize the weight matrix
+        differently for the A and S updates, therefore two maximum numbers
+        (WAMax, WSmax) can be set.
 
         Because the spectral norm is expensive to compute, it will only update
         the step_size if relative changes of L exceed (1-slack)/2.
         If not, which is usually the case after only a few iterations, it will
         report a previous value for the next several iterations. The stride
-        beteen updates is set by
+        between updates is set by
             stride -> stride * (1-slack)/2 / rel_error
         i.e. it increases more strongly if the rel_error is much below the
         slack budget.
         """
-        assert slack > 0 and slack <= 1
-
-        self.slack = slack
-        if WAmax is None:
-            if Wmax is None:
-                WAmax = Wmax = 1
-            else:
-                WAmax = Wmax
-        if WSmax is None:
-            if Wmax is None:
-                WSmax = Wmax = 1
-            else:
-                WSmax = Wmax
         self.WSmax = WSmax
         self.WAmax = WAmax
+
+        assert slack > 0 and slack <= 1
+        self.slack = slack
         self.max_stride = max_stride
         # need to knwo when to advance the iterations counter
         if update_order is None:
@@ -97,6 +95,16 @@ class Steps_AS:
             self.it += 1
 
         return self.slack / self.stored[j]
+
+def normalizeMatrix(M, axis):
+    if axis == 1:
+        norm = np.sum(M, axis=axis)
+        norm = np.broadcast_to(norm, M.T.shape)
+        norm = norm.T
+    else:
+        norm = np.sum(M, axis=axis)
+        norm = np.broadcast_to(norm, M.shape)
+    return norm
 
 def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, update_order=None, steps_g_update='steps_f', accelerated=False, max_iter=1000, e_rel=1e-3, e_abs=0, traceback=False):
     """Non-negative matrix factorization.
@@ -143,14 +151,18 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
 
     # create stepsize callback, needs max of W
     if W is not None:
-        Wmax = W.max()
+        # normalize in pixel and band directions to have similar update speeds
+        WA = normalizeMatrix(W, 1)
+        WS = normalizeMatrix(W, 0)
+        WAmax = WA.max()
+        WSmax = WS.max()
     else:
-        W = Wmax = 1
-    steps_f = Steps_AS(Wmax=Wmax, slack=slack, update_order=update_order)
+        WA = WS = WAmax = WSmax = 1
+    steps_f = Steps_AS(WAmax=WAmax, WSmax=WSmax, slack=slack, update_order=update_order)
 
     # gradient step, followed by direct application of prox_S or prox_A
     from functools import partial
-    f = partial(prox_likelihood, Y=Y, W=W, prox_S=prox_S, prox_A=prox_A)
+    f = partial(prox_likelihood, Y=Y, WA=WA, WS=WS, prox_S=prox_S, prox_A=prox_A)
 
     Xs = [A0, S0]
     res = algorithms.bsdmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls,
