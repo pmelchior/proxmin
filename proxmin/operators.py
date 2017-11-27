@@ -24,21 +24,12 @@ def prox_zero(X, step):
     """
     return np.zeros_like(X)
 
-def prox_hard(X, step, thresh=0):
-    """Hard thresholding
-
-    X if X >= thresh, otherwise 0
-    NOTE: modifies X in place
-    """
-    thresh_ = _step_gamma(step, thresh)
-    below = X - thresh_ < 0
-    X[below] = 0
-    return X
-
 def prox_plus(X, step):
     """Projection onto non-negative numbers
     """
-    return prox_hard(X, step)
+    below = X < 0
+    X[below] = 0
+    return X
 
 def prox_unity(X, step, axis=0):
     """Projection onto sum=1 along an axis
@@ -86,6 +77,22 @@ def prox_components(X, step, prox=None, axis=0):
 
 #### Regularization function below ####
 
+def prox_hard(X, step, thresh=0):
+    """Hard thresholding
+
+    X if |X| >= thresh, otherwise 0
+    NOTE: modifies X in place
+    """
+    thresh_ = _step_gamma(step, thresh)
+    below = np.abs(X) < thresh_
+    X[below] = 0
+    return X
+
+def prox_hard_plus(X, step, thresh=0):
+    """Hard thresholding with projection onto non-negative numbers
+    """
+    return prox_plus(prox_hard(X, step, thresh=thresh), step)
+
 def prox_soft(X, step, thresh=0):
     """Soft thresholding proximal operator
     """
@@ -114,7 +121,7 @@ def prox_max_entropy(X, step, gamma=1):
 
 def get_gradient_y(shape, py):
     """Calculate the gradient in the y direction to the line at py
-    
+
     The y gradient operator is a block matrix, where each block is the size of the image width.
     The matrix itself is made up of (img_height x img_height) blocks, most of which are all zeros.
     """
@@ -124,7 +131,7 @@ def get_gradient_y(shape, py):
     rows = []
     empty = scipy.sparse.dia_matrix((width, width))
     identity = scipy.sparse.identity(width)
-    
+
     # Create the blocks by row, beginning with blocks leading up to the peak row from the top
     for n in range(py):
         row = [empty]*n
@@ -143,7 +150,7 @@ def get_gradient_y(shape, py):
 
 def get_gradient_x(shape, px):
     """Calculate the gradient in the x direction to the line at px
-    
+
     The y gradient operator is a block diagonal matrix, where each block is the size of the image width.
     The matrix itself is made up of (img_height x img_height) blocks, most of which are all zeros.
     """
