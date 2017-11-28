@@ -119,6 +119,43 @@ def prox_max_entropy(X, step, gamma=1):
 
     return - gamma_ * np.real(lambertw(np.exp(-(X + gamma_) / gamma_) / -gamma_))
 
+class AlternatingProjections:
+    """Combine several proximal operators in the form of Alternating Projections
+
+    This implements the simple POCS method with several repeated executions of
+    the projection sequence.
+
+    Note: The operators are executed in the "natural" order, i.e. the first one
+    in the list is applied last.
+    """
+    def __init__(self, prox_list=None, repeat=1):
+        self.operators = []
+        self.repeat = repeat
+        if prox_list is not None:
+            self.operators += prox_list
+
+    def __call__(self, X, step):
+        # simple POCS method, no Dykstra or averaging
+        # TODO: no convergence test
+        X_ = X.copy()
+        for r in range(self.repeat):
+            # in reverse order (first one last, as expected from a sequence of ops)
+            for prox in self.operators[::-1]:
+                X_ = prox(X, step)
+        return X_
+
+    def find(self, cls):
+        import functools
+        for i in range(len(self.operators)):
+            prox = self.operators[i]
+            if isinstance(prox, functools.partial):
+                if prox.func is cls:
+                    return i
+            else:
+                if prox is cls:
+                    return i
+        return -1
+
 def get_gradient_y(shape, py):
     """Calculate the gradient in the y direction to the line at py
 
