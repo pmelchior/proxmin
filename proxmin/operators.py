@@ -137,12 +137,12 @@ class AlternatingProjections:
     def __call__(self, X, step):
         # simple POCS method, no Dykstra or averaging
         # TODO: no convergence test
-        X_ = X.copy()
+        # NOTE: inline updates
         for r in range(self.repeat):
             # in reverse order (first one last, as expected from a sequence of ops)
             for prox in self.operators[::-1]:
-                X_ = prox(X, step)
-        return X_
+                X = prox(X, step)
+        return X
 
     def find(self, cls):
         import functools
