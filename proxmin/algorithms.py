@@ -6,7 +6,7 @@ from functools import partial
 from . import utils
 
 logging.basicConfig()
-logger = logging.getLogger("proxmin.algorithms")
+logger = logging.getLogger("proxmin")
 
 def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=False):
     """Proximal Gradient Method
@@ -128,7 +128,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
         prox_f_ = utils.AcceleratedProxF(prox_f)
     else:
         if accelerated:
-            logger.warning("Ignoring acceleration because of prox_g")
+            logger.debug("Ignoring acceleration because of prox_g")
             accelerated = False
         prox_f_ = prox_f
 
@@ -172,7 +172,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
                     if accelerated:
                         prox_f_.t = 1.
                         prox_f_.omega = 0.
-                    logger.warning("Restarting with step_f = %.3f" % step_f)
+                    logger.info("Restarting with step_f = %.3f" % step_f)
                     tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_f=step_f, step_g=step_g)
                     if accelerated:
                         tr.update_history(it, omega=prox_f_.omega)
@@ -291,7 +291,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
                 tr.update_history(it, X=X, step_f=step_f)
                 tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
                                   S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
-                logger.warning("Restarting with step_f = %.3f" % step_f)
+                logger.info("Restarting with step_f = %.3f" % step_f)
 
         Rk = R
         Xk = X.copy()
@@ -366,7 +366,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
     N = len(X0s)
 
     if accelerated and proxs_g is not None:
-        logger.warning("Ignoring acceleration because of proxs_g")
+        logger.debug("Ignoring acceleration because of proxs_g")
         accelerated = False
     if accelerated:
         proxs_f_acc = [utils.AcceleratedProxF(None) for j in range(N)]
@@ -395,11 +395,11 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
 
     if steps_g_update.lower() == 'steps_f':
         if steps_g is not None:
-            logger.warning("Setting steps_g = None for update strategy 'steps_f'.")
+            logger.debug("Setting steps_g = None for update strategy 'steps_f'.")
             steps_g = None
     if steps_g_update.lower() in ['fixed', 'relative']:
         if steps_g is None:
-            logger.warning("Ignoring steps_g update strategy '%s' because steps_g is None." % steps_g_update)
+            logger.debug("Ignoring steps_g update strategy '%s' because steps_g is None." % steps_g_update)
             steps_g_update = 'steps_f'
 
     # if steps_g / Ls are None or single: create N duplicates

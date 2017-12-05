@@ -3,9 +3,6 @@ import logging
 
 import numpy as np
 
-logging.basicConfig()
-logger = logging.getLogger("proxmin.utils")
-
 def get_spectral_norm(L):
     if L is None:
         return 1

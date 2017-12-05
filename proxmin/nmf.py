@@ -5,9 +5,6 @@ from . import operators
 from . import utils
 from . import algorithms
 
-logging.basicConfig()
-logger = logging.getLogger("proxmin.nmf")
-
 def delta_data(A, S, Y, W=1):
     return W*(A.dot(S) - Y)
 
