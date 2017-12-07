@@ -30,7 +30,7 @@ def prox_likelihood(X, step, Xs=None, j=None, Y=None, WA=None, WS=None, prox_S=o
         return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=WS)
 
 class Steps_AS:
-    def __init__(self, WAmax=1, WSmax=1, slack=0.9, max_stride=100):
+    def __init__(self, WA=1, WS=1, slack=0.9, max_stride=100):
         """Helper class to compute the Lipschitz constants of grad f.
 
         The __call__ function compute the spectral norms of A or S, which
@@ -51,24 +51,46 @@ class Steps_AS:
         i.e. it increases more strongly if the rel_error is much below the
         slack budget.
         """
-        self.WSmax = WSmax
-        self.WAmax = WAmax
+        import scipy.sparse
+        if WA is 1:
+            self.WA = WA
+        else:
+            self.WA = scipy.sparse.diags(WA.flatten())
+        if WS is 1:
+            self.WS = WS
+        else:
+            self.WS = scipy.sparse.diags(WS.flatten())
 
         # two independent caches for Lipschitz constants
-        self._cbA = utils.ApproximateCache(self._one_over_lipschitz, slack=slack, max_stride=max_stride)
-        self._cbS = utils.ApproximateCache(self._one_over_lipschitz, slack=slack, max_stride=max_stride)
+        self._cb = [utils.ApproximateCache(self._one_over_lipschitzA, slack=slack, max_stride=max_stride),
+                    utils.ApproximateCache(self._one_over_lipschitzS, slack=slack, max_stride=max_stride)]
 
-    def _one_over_lipschitz(self, X):
-        return 1./utils.get_spectral_norm(X)
+    def _one_over_lipschitzA(self, Xs):
+        A,S = Xs
+        if self.WA is 1:
+            return 1./utils.get_spectral_norm(S.T)
+        else: # full weight matrix, need to serialize S along k
+            import scipy.sparse
+            Ss = scipy.sparse.block_diag([S.T for b in range(len(A))])
+            # Lipschitz constant for grad_A = || S Sigma_1 S.T||_s
+            SSigma_1S = Ss.T.dot(self.WA.dot(Ss))
+            LA = np.real(scipy.sparse.linalg.eigs(SSigma_1S, k=1, return_eigenvectors=False)[0])
+            return 1./LA
+
+    def _one_over_lipschitzS(self, Xs):
+        A,S = Xs
+        if self.WA is 1:
+            return 1./utils.get_spectral_norm(A)
+        else:
+            import scipy.sparse
+            N = S.shape[1]
+            As = scipy.sparse.bmat([[scipy.sparse.identity(N) * A[b,k] for k in range(A.shape[1])] for b in range(A.shape[0])])
+            ASigma_1A = As.T.dot(self.WS.dot(As))
+            LS = np.real(scipy.sparse.linalg.eigs(ASigma_1A, k=1, return_eigenvectors=False)[0])
+            return 1./LS
 
     def __call__(self, j, Xs):
-        if j == 0:
-            L_1 = self._cbA(Xs[1].T) / self.WAmax  # ||S*S.T||
-        elif j == 1:
-            L_1 = self._cbS(Xs[0]) / self.WSmax # ||A.T * A||
-        else:
-            raise NotImplementedError("j < 2")
-        return L_1
+        return self._cb[j](Xs)
 
 def normalizeMatrix(M, axis):
     if axis == 1:
@@ -128,11 +150,9 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
         # normalize in pixel and band directions to have similar update speeds
         WA = normalizeMatrix(W, 1)
         WS = normalizeMatrix(W, 0)
-        WAmax = WA.max()
-        WSmax = WS.max()
     else:
-        WA = WS = WAmax = WSmax = 1
-    steps_f = Steps_AS(WAmax=WAmax, WSmax=WSmax, slack=slack)
+        WA = WS = 1
+    steps_f = Steps_AS(WA=WA, WS=WS, slack=slack)
 
     # gradient step, followed by direct application of prox_S or prox_A
     from functools import partial

@@ -50,7 +50,8 @@ if __name__ == "__main__":
     trueS = np.array([generateComponent(n) for i in range(k)])
     trueY = np.dot(trueA,trueS)
     Y = add_noise(trueY, noise)
-    W = np.ones_like(Y) / noise**2
+    # if noise is variable, specify variance matrix of the same shape as Y
+    W = None
 
     # initialize and run NMF
     A0 = np.array([generateAmplitudes(k) for i in range(b)])
