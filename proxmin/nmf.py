@@ -30,7 +30,7 @@ def prox_likelihood(X, step, Xs=None, j=None, Y=None, WA=None, WS=None, prox_S=o
         return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=WS)
 
 class Steps_AS:
-    def __init__(self, WA=1, WS=1, slack=0.9, max_stride=100):
+    def __init__(self, WA=1, WS=1, slack=0.1, max_stride=100):
         """Helper class to compute the Lipschitz constants of grad f.
 
         The __call__ function compute the spectral norms of A or S, which
@@ -43,11 +43,11 @@ class Steps_AS:
         (WAMax, WSmax) can be set.
 
         Because the spectral norm is expensive to compute, it will only update
-        the step_size if relative changes of L exceed (1-slack)/2.
+        the step_size if relative changes of L exceed slack/2.
         If not, which is usually the case after only a few iterations, it will
         report a previous value for the next several iterations. The stride
         between updates is set by
-            stride -> stride * (1-slack)/2 / rel_error
+            stride -> stride * (slack/2 / rel_error
         i.e. it increases more strongly if the rel_error is much below the
         slack budget.
         """

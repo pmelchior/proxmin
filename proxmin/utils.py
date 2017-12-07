@@ -165,9 +165,9 @@ class Traceback(object):
                     self._store_variable(j, k, m, v[m])
 
 class ApproximateCache(object):
-    def __init__(self, func, slack=0.9, max_stride=100):
+    def __init__(self, func, slack=0.1, max_stride=100):
         self.func = func
-        assert slack > 0 and slack <= 1
+        assert slack >= 0 and slack < 1
         self.slack = slack
         self.max_stride = max_stride
         self.it = 0
@@ -184,9 +184,9 @@ class ApproximateCache(object):
             val = self.func(*args, **kwargs)
 
             # increase stride when rel. changes in L are smaller than (1-slack)/2
-            if self.it > 1 and self.slack < 1:
+            if self.it > 1 and self.slack > 0:
                 rel_error = np.abs(self.stored - val) / self.stored
-                budget = (1-self.slack)/2
+                budget = self.slack/2
                 if rel_error < budget and rel_error > 0:
                     self.stride += max(1,int(budget/rel_error * self.stride))
                     self.stride = min(self.max_stride, self.stride)
