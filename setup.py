@@ -11,7 +11,7 @@ print('Packages:', packages)
 setup(
   name = 'proxmin',
   packages = packages,
-  version = '0.4.2',
+  version = '0.4.3',
   long_description = 'Proximal methods for constrained optimization, including NMF',
   author = 'Peter Melchior and Fred Moolekamp',
   author_email = 'peter.m.melchior@gmail.com',

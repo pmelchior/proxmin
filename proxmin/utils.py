@@ -164,6 +164,38 @@ class Traceback(object):
                 for m in range(M):
                     self._store_variable(j, k, m, v[m])
 
+class ApproximateCache(object):
+    def __init__(self, func, slack=0.9, max_stride=100):
+        self.func = func
+        assert slack > 0 and slack <= 1
+        self.slack = slack
+        self.max_stride = max_stride
+        self.it = 0
+        self.stride = 1
+        self.last = -1
+        self.stored = None
+
+    def __len__(self):
+        return len(self.stride)
+
+    def __call__(self, *args, **kwargs):
+        if self.it >= self.last + self.stride:
+            self.last = self.it
+            val = self.func(*args, **kwargs)
+
+            # increase stride when rel. changes in L are smaller than (1-slack)/2
+            if self.it > 1 and self.slack < 1:
+                rel_error = np.abs(self.stored - val) / self.stored
+                budget = (1-self.slack)/2
+                if rel_error < budget and rel_error > 0:
+                    self.stride += max(1,int(budget/rel_error * self.stride))
+                    self.stride = min(self.max_stride, self.stride)
+            # updated last value
+            self.stored = val
+        else:
+            self.it += 1
+        return self.stored
+
 class AcceleratedProxF(object):
     # Nesterov acceleration for proximal gradient operators
     def __init__(self, prox_f):

@@ -30,7 +30,7 @@ def prox_likelihood(X, step, Xs=None, j=None, Y=None, WA=None, WS=None, prox_S=o
         return prox_likelihood_S(X, step, A=Xs[0], Y=Y, prox_g=prox_S, W=WS)
 
 class Steps_AS:
-    def __init__(self, WAmax=1, WSmax=1, slack=0.9, max_stride=100, update_order=None):
+    def __init__(self, WAmax=1, WSmax=1, slack=0.9, max_stride=100):
         """Helper class to compute the Lipschitz constants of grad f.
 
         The __call__ function compute the spectral norms of A or S, which
@@ -54,44 +54,21 @@ class Steps_AS:
         self.WSmax = WSmax
         self.WAmax = WAmax
 
-        assert slack > 0 and slack <= 1
-        self.slack = slack
-        self.max_stride = max_stride
-        # need to knwo when to advance the iterations counter
-        if update_order is None:
-            self.advance_index = 1
-        else:
-            self.advance_index = update_order[-1]
+        # two independent caches for Lipschitz constants
+        self._cbA = utils.ApproximateCache(self._one_over_lipschitz, slack=slack, max_stride=max_stride)
+        self._cbS = utils.ApproximateCache(self._one_over_lipschitz, slack=slack, max_stride=max_stride)
 
-        self.it = 0
-        N = 2
-        self.stride = [1] * N
-        self.last = [-1] * N
-        self.stored = [None] * N # last update of L
+    def _one_over_lipschitz(self, X):
+        return 1./utils.get_spectral_norm(X)
 
     def __call__(self, j, Xs):
-        if self.it >= self.last[j] + self.stride[j]:
-            self.last[j] = self.it
-            if j == 0:
-                L = utils.get_spectral_norm(Xs[1].T) * self.WAmax  # ||S*S.T||
-            else:
-                L = utils.get_spectral_norm(Xs[0]) * self.WSmax # ||A.T * A||
-            if j == self.advance_index:
-                self.it += 1
-
-            # increase stride when rel. changes in L are smaller than (1-slack)/2
-            if self.it > 1 and self.slack < 1:
-                rel_error = np.abs(self.stored[j] - L) / self.stored[j]
-                budget = (1-self.slack)/2
-                if rel_error < budget and rel_error > 0:
-                    self.stride[j] += max(1,int(budget/rel_error * self.stride[j]))
-                    self.stride[j] = min(self.max_stride, self.stride[j])
-            # updated last value
-            self.stored[j] = L
-        elif j == self.advance_index:
-            self.it += 1
-
-        return self.slack / self.stored[j]
+        if j == 0:
+            L_1 = self._cbA(Xs[1].T) / self.WAmax  # ||S*S.T||
+        elif j == 1:
+            L_1 = self._cbS(Xs[0]) / self.WSmax # ||A.T * A||
+        else:
+            raise NotImplementedError("j < 2")
+        return L_1
 
 def normalizeMatrix(M, axis):
     if axis == 1:
@@ -155,7 +132,7 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
         WSmax = WS.max()
     else:
         WA = WS = WAmax = WSmax = 1
-    steps_f = Steps_AS(WAmax=WAmax, WSmax=WSmax, slack=slack, update_order=update_order)
+    steps_f = Steps_AS(WAmax=WAmax, WSmax=WSmax, slack=slack)
 
     # gradient step, followed by direct application of prox_S or prox_A
     from functools import partial
