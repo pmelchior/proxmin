@@ -179,6 +179,9 @@ class ApproximateCache(object):
         return len(self.stride)
 
     def __call__(self, *args, **kwargs):
+        if self.slack == 0:
+            self.it += 1
+            return self.func(*args, **kwargs)
         if self.it >= self.last + self.stride:
             self.last = self.it
             val = self.func(*args, **kwargs)
