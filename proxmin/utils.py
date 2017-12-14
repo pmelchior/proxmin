@@ -62,7 +62,8 @@ class MatrixAdapter(object):
         # dot product
         if self.axis == 1:
             return self.L.dot(X.flatten()).reshape(X.shape[0], -1)
-        raise NotImplementedError("MatrixAdapter.dot() is not useful with axis=0.\nUse regular matrix dot product instead!")
+        raise NotImplementedError("MatrixAdapter.dot() is not useful with axis=0.\n"
+                                  "Use regular matrix dot product instead!")
 
 
 class Traceback(object):
@@ -165,7 +166,33 @@ class Traceback(object):
                     self._store_variable(j, k, m, v[m])
 
 class ApproximateCache(object):
+    """Cache large arrays that don't change much
+
+    Certain calculations, like `~proxmin.nmf.Steps_AS._one_over_lipschitzA`
+    take a long time to calculate. But after a few iterations, when the
+    matrices begin to converge, changes in the Lipschitz constant are small
+    and these functions become an unnecessary time sync.
+    This class allows the user to store these (and similar) values and
+    only calculate them when there is a substantial change in the value.
+
+    This method works by comparing the stored value to the last value calculated.
+    If the relative difference between the two is less than `slack`/2, then the
+    change is deemed to be "small" and the `stride` (number of iterations to skip)
+    is increased to skip calculating the value for several iterations.
+    """
     def __init__(self, func, slack=0.1, max_stride=100):
+        """Constructor
+
+        Parameters
+        ----------
+        func: function
+            The slow function that calculates the value
+        slack: float, default=0.1
+            A measure of how much the value can differ before
+            it needs to be recalculated
+        max_stride: int, default=100
+            Maximum `stride` between calculations of the value.
+        """
         self.func = func
         assert slack >= 0 and slack < 1
         self.slack = slack
@@ -176,9 +203,17 @@ class ApproximateCache(object):
         self.stored = None
 
     def __len__(self):
+        """The current `stride` value
+        """
         return len(self.stride)
 
     def __call__(self, *args, **kwargs):
+        """Calculate the value (if necessary)
+
+        This method checks whether or not the value needs to be recalculated,
+        and if so, calculates it and sets the number of `stride` (iterations)
+        until it is calculated again.
+        """
         if self.slack == 0:
             self.it += 1
             return self.func(*args, **kwargs)
