@@ -381,7 +381,8 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
     # allow proxs_g to be None
     if proxs_g is None:
         proxs_g = [proxs_g] * N
-    assert len(proxs_g) == N
+    if(len(proxs_g) != N):
+        raise ValueError("len(proxs_g)={0} != N={1}".format(len(proxs_g), N))
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
