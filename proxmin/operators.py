@@ -119,7 +119,7 @@ def prox_max_entropy(X, step, gamma=1):
 
     return - gamma_ * np.real(lambertw(np.exp(-(X + gamma_) / gamma_) / -gamma_))
 
-class AlternatingProjections:
+class AlternatingProjections(object):
     """Combine several proximal operators in the form of Alternating Projections
 
     This implements the simple POCS method with several repeated executions of
