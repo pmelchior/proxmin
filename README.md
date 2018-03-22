@@ -1,3 +1,6 @@
+[![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs11081--018--9380--y-blue.svg)](https://doi.org/10.1007/s11081-018-9380-y)
+[![License](https://img.shields.io/github/license/pmelchior/proxmin.svg)](https://github.com/pmelchior/proxmin/blob/master/LICENSE.md)
+
 # Proximal Minimization
 
 The methods in this pure python(>=2.7) package provide solvers for constrained optimization problems. All of them use proximal operators to deal with non-smooth constraint functions.
@@ -13,7 +16,21 @@ In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Fa
 
 Details can be found in the [paper](http://arxiv.org/abs/1708.09066) *"Block-Simultaneous Direction Method of Multipliers — A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
-The code is licensed under the permissive MIT license. We ask that any published work that utilizes this package cites the paper above. Also, let us know ([@peter_melchior](https://twitter.com/peter_melchior)), we're curious.
+We ask that any published work that utilizes this package cites:
+```
+@Article{proxmin,
+    author="Moolekamp, Fred and Melchior, Peter",
+    title="Block-simultaneous direction method of multipliers: a proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints",
+    journal="Optimization and Engineering",
+    year="2018",
+    month="Mar",
+    day="20",
+    issn="1573-2924",
+    doi="10.1007/s11081-018-9380-y",
+    url="https://doi.org/10.1007/s11081-018-9380-y"
+}
+```
+Also, let us know (e.g. [@peter_melchior](https://twitter.com/peter_melchior)), we're curious.
 
 ## Dependencies and Installation
 

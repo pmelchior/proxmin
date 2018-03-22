@@ -82,7 +82,8 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         return X, tr
 
 
-def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=False):
+def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False, e_rel=1e-6,
+         e_abs=0, max_iter=1000, traceback=False):
     """Alternating Direction Method of Multipliers
 
     This method implements the linearized ADMM from Parikh & Boyd (2014).
@@ -134,7 +135,8 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_g=step_g)
+        tr.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros_like(Z),
+                          S=np.zeros_like(X), step_g=step_g)
         if accelerated:
             tr.update_history(it, omega=prox_f_.omega)
 
@@ -173,7 +175,8 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
                         prox_f_.t = 1.
                         prox_f_.omega = 0.
                     logger.info("Restarting with step_f = %.3f" % step_f)
-                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X), step_f=step_f, step_g=step_g)
+                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
+                                      step_f=step_f, step_g=step_g)
                     if accelerated:
                         tr.update_history(it, omega=prox_f_.omega)
 
@@ -191,7 +194,8 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
         return X, tr
 
 
-def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000,
+         traceback=False):
     """Simultaneous-Direction Method of Multipliers
 
     This method is an extension of the linearized ADMM for multiple constraints.
@@ -225,7 +229,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
 
     # fall-back to simple ADMM, try acceleration as it doesn't harm
     if proxs_g is None or not hasattr(proxs_g, '__iter__'):
-        return admm(X0, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, accelerated=True, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
+        return admm(X0, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, accelerated=True, e_rel=e_rel,
+                    max_iter=max_iter, traceback=traceback)
 
     # from here on we know that proxs_g is a list
     M = len(proxs_g)
@@ -269,7 +274,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
             tr.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g, e_rel, e_abs)
+        convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g,
+                                                                 e_rel, e_abs)
 
         if convergence:
             break
@@ -306,7 +312,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         return X, tr
 
 
-def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, accelerated=False, update='cascade', update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False):
+def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, accelerated=False, update='cascade',
+          update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False):
     """Block-Simultaneous Method of Multipliers.
 
     This method is an extension of the linearized SDMM, i.e. ADMM for multiple
@@ -374,7 +381,8 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
     # allow proxs_g to be None
     if proxs_g is None:
         proxs_g = [proxs_g] * N
-    assert len(proxs_g) == N
+    if(len(proxs_g) != N):
+        raise ValueError("len(proxs_g)={0} != N={1}".format(len(proxs_g), N))
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
@@ -460,7 +468,8 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
             else:
                 _S = np.zeros_like(X[j])
             tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
-            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=np.zeros_like(Z[j]), S=[np.zeros_like(X[j]) for n in range(M[j])])
+            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=np.zeros_like(Z[j]),
+                              S=[np.zeros_like(X[j]) for n in range(M[j])])
             if accelerated:
                 tr.update_history(it, j=j, omega=proxs_f_acc[j].omega)
 
@@ -502,10 +511,12 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
                     steps_g_[j][i] = utils.get_step_g(steps_f[j], _L[j][i].spec_norm, N=N, M=M[j])
 
             # update the variables
-            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j_, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
+            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j_, steps_f[j], proxs_g[j],
+                                                       steps_g_[j], _L[j])
 
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(X_[j], _L[j], LX[j], Z[j], U[j], R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
+            convergence[j], errors[j] = utils.check_constraint_convergence(X_[j], _L[j], LX[j], Z[j], U[j],
+                R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
             # Optionally update the new state
             if traceback:
                 tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
