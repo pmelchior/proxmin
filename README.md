@@ -3,7 +3,7 @@
 
 # Proximal Minimization
 
-The methods in this pure python(>=2.7) package provide solvers for constrained optimization problems. All of them use proximal operators to deal with non-smooth constraint functions.
+The methods in this package provide solvers for constrained optimization problems. All of them use proximal operators to deal with non-smooth constraint functions.
 
 The algorithms:
 
@@ -32,11 +32,15 @@ We ask that any published work that utilizes this package cites:
 ```
 Also, let us know (e.g. [@peter_melchior](https://twitter.com/peter_melchior)), we're curious.
 
-## Dependencies and Installation
+## Installation and Dependencies
 
-numpy and scipy
+```
+pip install proxmin
+```
 
-We make use of the usual setuptools, therefore to install, clone this repository and execute `python setup.py install`.
+ For the latest development version, clone this repository and execute `python setup.py install`.
+
+The code works on python>2.7 and requires numpy and scipy.
 
 ## Approach
 
@@ -128,5 +132,4 @@ A, S = nmf(Y, A0, S0, proxs_g=proxs_g)
 A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
 ```
 
-For a simple case, look at [examples/unmixing.py].
 A complete and practical example is given in [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.
