@@ -1,5 +1,6 @@
-[![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs11081--018--9380--y-blue.svg)](https://doi.org/10.1007/s11081-018-9380-y)
+[![PyPI](https://img.shields.io/pypi/v/proxmin.svg)](https://pypi.org/project/proxmin/)
 [![License](https://img.shields.io/github/license/pmelchior/proxmin.svg)](https://github.com/pmelchior/proxmin/blob/master/LICENSE.md)
+[![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs11081--018--9380--y-blue.svg)](https://doi.org/10.1007/s11081-018-9380-y)
 
 # Proximal Minimization
 
