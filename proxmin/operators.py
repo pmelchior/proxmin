@@ -22,7 +22,7 @@ def prox_id(X, step):
 def prox_zero(X, step):
     """Proximal operator to project onto zero
     """
-    return np.zeros_like(X)
+    return np.zeros(X.shape, dtype=X.dtype)
 
 def prox_plus(X, step):
     """Projection onto non-negative numbers
@@ -200,10 +200,10 @@ def get_gradient_x(shape, px):
     c = -np.ones((width,))
     c[px] = 0
     # Set the pixels leading up to the peak from the left
-    r = np.zeros_like(c)
+    r = np.zeros(c.shape, dtype=c.dtype)
     r[:px] = 1
     # Set the pixels leading up to the peak from the right
-    l = np.zeros_like(c)
+    l = np.zeros(c.shape, dtype=c.dtype)
     l[px:] = 1
     # Make a block for a single row in the image
     block = scipy.sparse.diags([l, c, r], [-1, 0,1], shape=(width,width))

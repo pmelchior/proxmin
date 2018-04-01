@@ -6,6 +6,8 @@ import numpy as np
 def get_spectral_norm(L):
     if L is None:
         return 1
+    elif hasattr(L, "spectral_norm"):
+        return L.spectral_norm()
     else: # linearized ADMM
         LTL = L.T.dot(L)
         # need spectral norm of L
@@ -259,13 +261,13 @@ def initXZU(X0, L):
     X = X0.copy()
     if not isinstance(L, list):
         Z = L.dot(X).copy()
-        U = np.zeros_like(Z)
+        U = np.zeros(Z.shape, dtype=Z.dtype)
     else:
         Z = []
         U = []
         for i in range(len(L)):
             Z.append(L[i].dot(X).copy())
-            U.append(np.zeros_like(Z[i]))
+            U.append(np.zeros(Z[i].shape, dtype=Z[i].dtype))
     return X,Z,U
 
 def l2sq(x):
@@ -332,7 +334,7 @@ def update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, L):
             X[:] = prox_f(X, step_f)
             LX = X
             Z[:] = X[:]
-            R = np.zeros_like(X)
+            R = np.zeros(X.shape, dtype=X.dtype)
             S += X
 
     else:
