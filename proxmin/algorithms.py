@@ -261,8 +261,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
     if traceback:
         tr = utils.Traceback()
         tr.update_history(it, X=X, step_f=step_f, omega=omega)
-        tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
-                          S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
+        tr.update_history(it, M=M, Z=Z, U=U, R=U, S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
 
     while it < max_iter:
 
@@ -295,7 +294,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
 
                 X,Z,U  = utils.initXZU(X0, _L)
                 tr.update_history(it, X=X, step_f=step_f)
-                tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
+                tr.update_history(it, M=M, Z=Z, U=U, R=U,
                                   S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
                 logger.info("Restarting with step_f = %.3f" % step_f)
 
@@ -445,14 +444,12 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
 
     # Initialization
     X, Z, U = [],[],[]
-    Xk = []
     LX, R, S = [None] * N, [None] * N, [None] * N
     for j in range(N):
         Xj, Zj, Uj = utils.initXZU(X0s[j], _L[j])
         X.append(Xj)
         Z.append(Zj)
         U.append(Uj)
-        Xk.append(Xj.copy())
 
     # containers
     convergence, errors = [None] * N, [None] * N
@@ -469,7 +466,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
                 _S = np.zeros(X[j].shape, dtype=X[j].dtype)
             tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
             tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
-                              R=np.zeros(Z[j].shape, dtype=Z[j].dtype),
+                              R=U[j],
                               S=[np.zeros(X[j].shape, dtype=X[j].dtype) for n in range(M[j])])
             if accelerated:
                 tr.update_history(it, j=j, omega=proxs_f_acc[j].omega)
@@ -534,7 +531,6 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
             break
 
         it += 1
-        Xk = [X[j].copy() for j in range(N)]
         l = Lmax.min()
 
     if it+1 >= max_iter:
