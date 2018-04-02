@@ -55,11 +55,11 @@ class Steps_AS:
         if WA is 1:
             self.WA = WA
         else:
-            self.WA = scipy.sparse.diags(WA.flatten())
+            self.WA = scipy.sparse.diags(WA.reshape(-1))
         if WS is 1:
             self.WS = WS
         else:
-            self.WS = scipy.sparse.diags(WS.flatten())
+            self.WS = scipy.sparse.diags(WS.reshape(-1))
 
         # two independent caches for Lipschitz constants
         self._cb = [utils.ApproximateCache(self._one_over_lipschitzA, slack=slack, max_stride=max_stride),

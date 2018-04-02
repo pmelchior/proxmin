@@ -63,7 +63,7 @@ class MatrixAdapter(object):
         # axis=0 is not needed because it can be done with a normal matrix
         # dot product
         if self.axis == 1:
-            return self.L.dot(X.flatten()).reshape(X.shape[0], -1)
+            return self.L.dot(X.reshape(-1)).reshape(X.shape[0], -1)
         raise NotImplementedError("MatrixAdapter.dot() is not useful with axis=0.\n"
                                   "Use regular matrix dot product instead!")
 
