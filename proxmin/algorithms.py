@@ -135,8 +135,8 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
 
     if traceback:
         tr = utils.Traceback()
-        tr.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros_like(Z),
-                          S=np.zeros_like(X), step_g=step_g)
+        tr.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
+                          S=np.zeros(X.shape, dtype=X.dtype), step_g=step_g)
         if accelerated:
             tr.update_history(it, omega=prox_f_.omega)
 
@@ -175,8 +175,8 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, accelerated=False
                         prox_f_.t = 1.
                         prox_f_.omega = 0.
                     logger.info("Restarting with step_f = %.3f" % step_f)
-                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros_like(Z), S=np.zeros_like(X),
-                                      step_f=step_f, step_g=step_g)
+                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
+                                      S=np.zeros(X.shape, dtype=X.dtype), step_f=step_f, step_g=step_g)
                     if accelerated:
                         tr.update_history(it, omega=prox_f_.omega)
 
@@ -261,8 +261,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
     if traceback:
         tr = utils.Traceback()
         tr.update_history(it, X=X, step_f=step_f, omega=omega)
-        tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
-                          S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
+        tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
+                          S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
 
     while it < max_iter:
 
@@ -295,8 +295,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
 
                 X,Z,U  = utils.initXZU(X0, _L)
                 tr.update_history(it, X=X, step_f=step_f)
-                tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros_like(Z),
-                                  S=[np.zeros_like(X) for n in range(M)], steps_g=steps_g)
+                tr.update_history(it, M=M, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
+                                  S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
                 logger.info("Restarting with step_f = %.3f" % step_f)
 
         Rk = R
@@ -464,12 +464,13 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, acceler
         tr = utils.Traceback(N)
         for j in update_order:
             if M[j]>0:
-                _S = [np.zeros_like(X[j]) for n in range(M[j])]
+                _S = [np.zeros(X[j].shape, dtype=X[j].dtype) for n in range(M[j])]
             else:
-                _S = np.zeros_like(X[j])
+                _S = np.zeros(X[j].shape, dtype=X[j].dtype)
             tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
-            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=np.zeros_like(Z[j]),
-                              S=[np.zeros_like(X[j]) for n in range(M[j])])
+            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
+                              R=np.zeros(Z[j].shape, dtype=Z[j].dtype),
+                              S=[np.zeros(X[j].shape, dtype=X[j].dtype) for n in range(M[j])])
             if accelerated:
                 tr.update_history(it, j=j, omega=proxs_f_acc[j].omega)
 
