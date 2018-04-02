@@ -236,26 +236,30 @@ class ApproximateCache(object):
             self.it += 1
         return self.stored
 
-class AcceleratedProxF(object):
-    # Nesterov acceleration for proximal gradient operators
-    def __init__(self, prox_f):
+class ProxWithMemory(object):
+    # Prox that keeps memory of last call argument
+    # optionally: Nesterov acceleration
+    def __init__(self, prox_f, accelerated=False):
         self.prox_f = prox_f
+        self.accelerated = accelerated
         self.t = 1.
         self.omega = 0.
-        self.Xk_1 = None
+        self.X_ = None
 
     def __call__(self, X, step):
-        if self.omega > 0 and self.Xk_1 is not None:
-            X_ = X + self.omega*(X - self.Xk_1)
+        if self.omega > 0 and self.X_ is not None:
+            _X = X + self.omega*(X - self.X_)
         else:
-            X_ = X
+            _X = X
 
-        t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
-        self.omega = (self.t - 1)/t_
-        self.t = t_
-        self.Xk_1 = X.copy()
+        if self.accelerated:
+            t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
+            self.omega = (self.t - 1)/t_
+            self.t = t_
 
-        return self.prox_f(X_, step)
+        self.X_ = X.copy()
+
+        return self.prox_f(_X, step)
 
 def initXZU(X0, L):
     X = X0.copy()
