@@ -103,6 +103,11 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
         Moolekamp & Melchior, Algorithm 1 (arXiv:1708.09066)
     """
 
+    # no need for ADMM is prox_g is not set
+    # use accelerated APGM instead
+    if prox_g is None:
+        return pgm(X0, prox_f, step_f, accelerated=True, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
+
     # use matrix adapter for convenient & fast notation
     _L = utils.MatrixAdapter(L)
     # get/check compatible step size for g
