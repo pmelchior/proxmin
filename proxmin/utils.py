@@ -7,7 +7,7 @@ def get_spectral_norm(L):
     if L is None:
         return 1
     elif hasattr(L, "spectral_norm"):
-        return L.spectral_norm()
+        return L.spectral_norm
     else: # linearized ADMM
         LTL = L.T.dot(L)
         # need spectral norm of L
