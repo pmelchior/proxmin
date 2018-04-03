@@ -1,6 +1,7 @@
 import sys, numpy as np
 from functools import partial
 from proxmin import algorithms as pa
+from proxmin.utils import Traceback
 
 # location of true minimum of f
 dx,dy = 1,0.5
@@ -127,7 +128,7 @@ def steps_f12(j=None, Xs=None):
     """Stepsize for f update given current state of Xs"""
     # Lipschitz const is always 2
     L = 2
-    slack = 1.
+    slack = 0.1# 1.
     return slack / L
 
 
@@ -180,38 +181,41 @@ if __name__ == "__main__":
 
     # step sizes and proximal operators for boundary
     step_f = steps_f12()
+
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
 
     # PGM without boundary
-    x, tr = pa.pgm(xy, prox_gradf, step_f, max_iter=max_iter, relax=1, traceback=True)
+    tr = Traceback()
+    x = pa.pgm(xy, prox_gradf, step_f, max_iter=max_iter, relax=1, traceback=tr)
     plotResults(tr, "PGM no boundary")
 
     # PGM
-    x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=True)
+    tr = Traceback()
+    x = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, traceback=tr)
     plotResults(tr, "PGM", boundary=boundary)
 
     # APGM
-    x, tr = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, accelerated=True, traceback=True)
+    tr = Traceback()
+    x = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, accelerated=True,  traceback=tr)
     plotResults(tr, "PGM accelerated", boundary=boundary)
 
     # ADMM
-    x, tr = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=True)
+    tr = Traceback()
+    x  = pa.admm(xy, prox_gradf, step_f, prox_g, max_iter=max_iter, traceback=tr)
     plotResults(tr, "ADMM", boundary=boundary)
 
     # ADMM with direct constraint projection
     prox_g_direct = None
-    x, tr = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, traceback=True)
+    tr = Traceback()
+    x = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, traceback=tr)
     plotResults(tr, "ADMM direct", boundary=boundary)
-
-    # and with acceleration
-    x, tr = pa.admm(xy, prox_gradf_, step_f, prox_g_direct, max_iter=max_iter, accelerated=True, traceback=True)
-    plotResults(tr, "ADMM direct accelerated", boundary=boundary)
 
     # SDMM
     M = 2
     proxs_g = [prox_g] * M # using same constraint several, i.e. M, times
-    x, tr = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=True)
+    tr = Traceback()
+    x = pa.sdmm(xy, prox_gradf, step_f, proxs_g, max_iter=max_iter, traceback=tr)
     plotResults(tr, "SDMM", boundary=boundary)
 
     # Block-SDMM
@@ -221,14 +225,18 @@ if __name__ == "__main__":
         M1 = 7
         M2 = 2
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
-        x, tr = pa.bsdmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=True)
-        plotResults(tr, "GLMM", boundary=boundary)
+        tr = Traceback(N)
+        x = pa.bsdmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=tr)
+        plotResults(tr, "bSDMM", boundary=boundary)
 
-        # GLMM with direct constraint projection
+        # bSDMM with direct constraint projection
         prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
         prox_g_direct = None
-        x, tr = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
-        plotResults(tr, "GLMM direct", boundary=boundary)
+        tr = Traceback(N)
+        x = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=tr)
+        plotResults(tr, "bSDMM direct", boundary=boundary)
 
-        x, tr = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, accelerated=True, max_iter=max_iter, traceback=True)
-        plotResults(tr, "GLMM direct accelerated", boundary=boundary)
+        # BPGM
+        tr = Traceback(N)
+        x = pa.bpgm(XY, prox_gradf12_, steps_f12, max_iter=max_iter, accelerated=True, traceback=tr)
+        plotResults(tr, "bPGM", boundary=boundary)

@@ -8,12 +8,13 @@ The methods in this package provide solvers for constrained optimization problem
 
 The algorithms:
 
-* Proximal Gradient Method (PGM): *forward-backward* split with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) constraint function. Nesterov acceleration is available.
-* Alternating Direction Method of Multipliers (ADMM): Rachford-Douglas split for two potentially non-smooth functions. We use the linearized form of it solve for additional linear mappings in the constraint functions.
-* Simultaneous Direction Method of Multipliers (SDMM): Extension of linearized ADMM for several constraint functions.
-* Block-Simultaneous Direction Method of Multipliers (bSDMM): Extension of SDMM to work with objective functions that are convex in several arguments. It's a proximal version of Block coordinate descent methods.
+* **Proximal Gradient Method (PGM)**: *forward-backward* split with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) constraint function. Nesterov acceleration is available.
+* **Block/Alternating Proximal Gradient Method (bPGM)**: Extension of PGM to objective functions that are convex in several arguments; optional Nesterov acceleration.
+* **Alternating Direction Method of Multipliers (ADMM)**: Rachford-Douglas split for two potentially non-smooth functions. We use the linearized form of it solve for additional linear mappings in the constraint functions.
+* **Simultaneous Direction Method of Multipliers (SDMM)**: Extension of linearized ADMM for several constraint functions.
+* **Block-Simultaneous Direction Method of Multipliers (bSDMM)**: Extension of SDMM to work with objective functions that are convex in several arguments. It's a proximal version of Block coordinate descent methods.
 
-In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Factorization (NMF). It allows the employment of an arbitrary number of constraints on each of the matrix factors.
+In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Factorization (NMF). As our algorithm allows an arbitrary number of constraints on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
 
 Details can be found in the [paper](http://arxiv.org/abs/1708.09066) *"Block-Simultaneous Direction Method of Multipliers — A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
@@ -110,7 +111,7 @@ X = pa.admm(X, prox_gradf, step_f, prox_circle, e_rel=1e-3, e_abs=1e-3)
 
 A fully working example to demonstrate the principle of operations is [examples/parabola.py] that find the minimum of a 2D parabola under hard boundary constraints (on a shifted circle or the intersection of lines).
 
-## Non-negative matrix factorization (NMF)
+## Constrained matrix factorization (CMF)
 
 We have developed this package with a few application cases in mind. One is matrix factorization under constraints on the matrix factors, i.e. describing a target matrix **Y** as a product of **A S**. If those constraints are only non-negativity, the method is known as NMF.
 
