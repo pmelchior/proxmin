@@ -1,4 +1,5 @@
 from proxmin import nmf
+from proxmin.utils import Traceback
 from scipy.optimize import linear_sum_assignment
 import numpy as np
 import matplotlib.pyplot as plt
@@ -58,7 +59,8 @@ if __name__ == "__main__":
     S0 = np.array([generateComponent(n) for i in range(k)])
     p1 = partial(po.prox_unity_plus, axis=1)
     proxs_g=[[p1], None]
-    A, S, tr = nmf(Y, A0, S0, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=True,accelerated=True)
+    tr = Traceback(2)
+    A, S = nmf(Y, A0, S0, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=tr)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 

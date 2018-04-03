@@ -8,7 +8,7 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin")
 
-def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=False):
+def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=None):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4.
@@ -23,11 +23,10 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         relax: (over)relaxation parameter, < 1.5
         e_rel: relative error of X
         max_iter: maximum iteration, irrespective of residual error
-        traceback: whether a record of all optimization variables is kept
+        traceback: utils.Traceback to hold variable histories
 
     Returns:
         X: optimized value
-        X, trace: adds utils.Traceback if traceback is True
 
     See also:
         utils.AcceleratedProxF
@@ -40,13 +39,12 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
     if relax is not None:
         assert relax < 1.5
 
-    if traceback:
-        tr = utils.Traceback()
-        tr.update_history(0, X=X, step_f=step_f)
+    if traceback is not None:
+        traceback.update_history(0, X=X, step_f=step_f)
         if accelerated:
-            tr.update_history(0, omega=prox_f_.omega)
+            traceback.update_history(0, omega=prox_f_.omega)
         if relax is not None:
-            tr.update_history(0, relax=relax)
+            traceback.update_history(0, relax=relax)
 
     for it in range(max_iter):
 
@@ -55,12 +53,12 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         if relax is not None:
             X += (relax-1)*(X - X_)
 
-        if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f)
+        if traceback is not None:
+            traceback.update_history(it+1, X=X, step_f=step_f)
             if accelerated:
-                tr.update_history(it+1, omega=prox_f_.omega)
+                traceback.update_history(it+1, omega=prox_f_.omega)
             if relax is not None:
-                tr.update_history(it+1, relax=relax)
+                traceback.update_history(it+1, relax=relax)
 
         # test for fixed point convergence
         if utils.l2sq(X - X_) <= e_rel**2*utils.l2sq(X):
@@ -70,13 +68,10 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
 
-    if not traceback:
-        return X
-    else:
-        return X, tr
+    return X
 
 
-def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=False):
+def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
     """Alternating Direction Method of Multipliers
 
     This method implements the linearized ADMM from Parikh & Boyd (2014).
@@ -93,11 +88,10 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
         max_iter: maximum iteration number, irrespective of current residuals
-        traceback: whether a record of all optimization variables is kept
+        traceback: utils.Traceback to hold variable histories
 
     Returns:
         X: optimized value
-        X, trace: adds utils.Traceback if traceback is True
 
     Reference:
         Moolekamp & Melchior, Algorithm 1 (arXiv:1708.09066)
@@ -119,18 +113,17 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
     X_ = X.copy()
     it = 0
 
-    if traceback:
-        tr = utils.Traceback()
-        tr.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
-                          S=np.zeros(X.shape, dtype=X.dtype), step_g=step_g)
+    if traceback is not None:
+        traceback.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype), S=np.zeros(X.shape, dtype=X.dtype), step_g=step_g)
+
     while it < max_iter:
 
         # Update the variables, return LX and primal/dual residual
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
 
         # Optionally store the variables in the history
-        if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, Z=Z, U=U, R=R, S=S,  step_g=step_g)
+        if traceback is not None:
+            traceback.update_history(it+1, X=X, step_f=step_f, Z=Z, U=U, R=R, S=S,  step_g=step_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, error = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
@@ -149,12 +142,12 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
                     step_g /= 2
                     # re-init
                     it = 0
-                    tr.reset()
 
                     X,Z,U  = utils.initXZU(X0, _L)
                     logger.info("Restarting with step_f = %.3f" % step_f)
-                    tr.update_history(it, X=X, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype),
-                                      S=np.zeros(X.shape, dtype=X.dtype), step_f=step_f, step_g=step_g)
+                    if traceback is not None:
+                        traceback.reset()
+                        traceback.update_history(it, X=X, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype), S=np.zeros(X.shape, dtype=X.dtype), step_f=step_f, step_g=step_g)
             X_ = X.copy()
             R_ = R
 
@@ -162,13 +155,10 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
 
-    if not traceback:
-        return X
-    else:
-        return X, tr
+    return X
 
 
-def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=False):
+def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
     """Simultaneous-Direction Method of Multipliers
 
     This method is an extension of the linearized ADMM for multiple constraints.
@@ -187,11 +177,10 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
         max_iter: maximum iteration number, irrespective of current residuals
-        traceback: whether a record of all optimization variables is kept
+        traceback: utils.Traceback to hold variable histories
 
     Returns:
         X: optimized value
-        X, trace: adds utils.Traceback if traceback is True
 
     See also:
         algorithms.admm
@@ -230,19 +219,18 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
     X_ = X.copy()
     it, omega = 0, 0
 
-    if traceback:
-        tr = utils.Traceback()
-        tr.update_history(it, X=X, step_f=step_f, omega=omega)
-        tr.update_history(it, M=M, Z=Z, U=U, R=U, S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
+    if traceback is not None:
+        traceback.update_history(it, X=X, step_f=step_f, omega=omega)
+        traceback.update_history(it, M=M, Z=Z, U=U, R=U, S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
 
     while it < max_iter:
 
         # update the variables
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
 
-        if traceback:
-            tr.update_history(it+1, X=X, step_f=step_f, omega=omega)
-            tr.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
+        if traceback is not None:
+            traceback.update_history(it+1, X=X, step_f=step_f, omega=omega)
+            traceback.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g,
@@ -262,12 +250,13 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
 
                 # re-init
                 it = 0
-                tr.reset()
 
                 X,Z,U  = utils.initXZU(X0, _L)
-                tr.update_history(it, X=X, step_f=step_f)
-                tr.update_history(it, M=M, Z=Z, U=U, R=U,
-                                  S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
+                if traceback is not None:
+                    traceback.reset()
+                    traceback.update_history(it, X=X, step_f=step_f)
+                    traceback.update_history(it, M=M, Z=Z, U=U, R=U,
+                                      S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
                 logger.info("Restarting with step_f = %.3f" % step_f)
 
         R_ = R
@@ -277,13 +266,10 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
 
-    if not traceback:
-        return X
-    else:
-        return X, tr
+    return X
 
 
-def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=False):
+def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=None):
     """Block Proximal Gradient Method.
 
     Also know as Alternating Proximal Gradient Method, it performs Proximal
@@ -307,11 +293,10 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
         relax: (over)relaxation parameter for each variable, < 1.5
         e_rel: relative error of X
         max_iter: maximum iteration, irrespective of residual error
-        traceback: whether a record of all optimization variables is kept
+        traceback: utils.Traceback to hold variable histories
 
     Returns:
         X: optimized value
-        X, trace: adds utils.Traceback if traceback is True
 
     See also:
         utils.AcceleratedProxF
@@ -344,12 +329,11 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
     proxs_f_ = [utils.ProxWithMemory(None, accelerated=accelerated[j]) for j in range(N)]
 
     it = 0
-    if traceback:
-        tr = utils.Traceback(N)
+    if traceback is not None:
         for j in update_order:
-            tr.update_history(it, j=j, X=X[j], steps_f=None)
+            traceback.update_history(it, j=j, X=X[j], steps_f=None)
             if accelerated[j]:
-                tr.update_history(it, j=j, omega=proxs_f_[j].omega)
+                traceback.update_history(it, j=j, omega=proxs_f_[j].omega)
 
     while it < max_iter:
 
@@ -370,10 +354,10 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
             if relax[j] is not None:
                 X[j] += (relax[j]-1)*(X[j] - X_[j])
 
-            if traceback:
-                tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f_j)
+            if traceback is not None:
+                traceback.update_history(it+1, j=j, X=X_[j], steps_f=steps_f_j)
                 if accelerated:
-                    tr.update_history(it+1, j=j, omega=proxs_f_[j].omega)
+                    traceback.update_history(it+1, j=j, omega=proxs_f_[j].omega)
 
         # test for fixed point convergence
         if all([utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]):
@@ -385,13 +369,10 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
 
-    if not traceback:
-        return X
-    else:
-        return X, tr
+    return X
 
 
-def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update='cascade', update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False):
+def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update='cascade', update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=None):
     """Block-Simultaneous Method of Multipliers.
 
     This method is an extension of the linearized SDMM, i.e. ADMM for multiple
@@ -429,15 +410,14 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
         max_iter: maximum iteration number, irrespective of current residuals
-        traceback: whether a record of all optimization variables is kept
+        traceback: utils.Traceback to hold variable histories
 
     Returns:
         Xs: list of optimized values
-        X, trace: adds utils.Traceback if traceback is True
 
     Warning:
         Because of the potentially large list of optimization variables,
-        setting traceback=True may exhaust memory. It should thus be run
+        setting traceback may exhaust memory. It should thus be run
         with a sufficiently small max_iter.
 
     See also:
@@ -533,15 +513,14 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     slack = [1.] * N
     it = 0
 
-    if traceback:
-        tr = utils.Traceback(N)
+    if traceback is not None:
         for j in update_order:
             if M[j]>0:
                 _S = [np.zeros(X[j].shape, dtype=X[j].dtype) for n in range(M[j])]
             else:
                 _S = np.zeros(X[j].shape, dtype=X[j].dtype)
-            tr.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
-            tr.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
+            traceback.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
+            traceback.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
                               R=U[j],
                               S=[np.zeros(X[j].shape, dtype=X[j].dtype) for n in range(M[j])])
 
@@ -575,9 +554,9 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
             convergence[j], errors[j] = utils.check_constraint_convergence(X_[j], _L[j], LX[j], Z[j], U[j],
                 R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
             # Optionally update the new state
-            if traceback:
-                tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
-                tr.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
+            if traceback is not None:
+                traceback.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
+                traceback.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
 
         if update.lower() == 'block':
             for j in range(N):
@@ -592,7 +571,4 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
         logger.warning("Solution did not converge")
     logger.info("Completed {0} iterations".format(it+1))
 
-    if not traceback:
-        return X
-    else:
-        return X, tr
+    return X

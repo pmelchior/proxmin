@@ -102,7 +102,7 @@ def normalizeMatrix(M, axis):
         norm = np.broadcast_to(norm, M.shape)
     return norm
 
-def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, update_order=None, steps_g_update='steps_f', accelerated=False, max_iter=1000, e_rel=1e-3, e_abs=0, traceback=False):
+def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, traceback=None):
     """Non-negative matrix factorization.
 
     This method solves the NMF problem
@@ -126,15 +126,13 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
             See Steps_AS() for details.
         update_order: list of factor indices in update order
             j=0 -> A, j=1 -> S
-        accelerated: If Nesterov acceleration should be used for A and S
         max_iter: maximum iteration number, irrespective of current residuals
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
-        traceback: whether a record of all optimization variables is kept
+        traceback: utils.Traceback to hold variable histories
 
     Returns:
         A, S: updated amplitude and source matrices
-        A, S, trace: adds utils.Traceback if traceback is True
 
     See also:
         algorithms.bsdmm for update_order and steps_g_update
@@ -159,11 +157,5 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
     f = partial(prox_likelihood, Y=Y, WA=WA, WS=WS, prox_S=prox_S, prox_A=prox_A)
 
     Xs = [A0, S0]
-    res = algorithms.bsdmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls,
-                           update_order=update_order, steps_g_update=steps_g_update, accelerated=accelerated,
-                           max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, traceback=traceback)
-
-    if not traceback:
-        return res[0], res[1]
-    else:
-        return res[0][0], res[0][1], res[1]
+    return algorithms.bsdmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls,
+                           update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, traceback=traceback)
