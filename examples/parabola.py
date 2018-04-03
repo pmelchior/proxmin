@@ -197,7 +197,7 @@ if __name__ == "__main__":
 
     # APGM
     tr = Traceback()
-    x = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, accelerated=True, traceback=tr)
+    x = pa.pgm(xy, prox_gradf_, step_f, max_iter=max_iter, accelerated=True,  traceback=tr)
     plotResults(tr, "PGM accelerated", boundary=boundary)
 
     # ADMM

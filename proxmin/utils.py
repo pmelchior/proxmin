@@ -236,30 +236,21 @@ class ApproximateCache(object):
             self.it += 1
         return self.stored
 
-class ProxWithMemory(object):
-    # Prox that keeps memory of last call argument
-    # optionally: Nesterov acceleration
-    def __init__(self, prox_f, accelerated=False):
-        self.prox_f = prox_f
-        self.accelerated = accelerated
+class NesterovStepper(object):
+    def __init__(self, accelerated=False):
         self.t = 1.
-        self.omega = 0.
-        self.X_ = None
+        self.accelerated = accelerated
 
-    def __call__(self, X, step):
-        if self.omega > 0 and self.X_ is not None:
-            _X = X + self.omega*(X - self.X_)
-        else:
-            _X = X
-
+    @property
+    def omega(self):
         if self.accelerated:
             t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
-            self.omega = (self.t - 1)/t_
+            om = (self.t - 1)/t_
             self.t = t_
-
-        self.X_ = X.copy()
-
-        return self.prox_f(_X, step)
+            print ("omega = %.3f" % om)
+            return om
+        else:
+            return 0
 
 def initXZU(X0, L):
     X = X0.copy()

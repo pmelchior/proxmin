@@ -20,43 +20,50 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         prox_f: proxed function f (the forward-backward step)
         step_f: step size, < 1/L with L being the Lipschitz constant of grad f
         accelerated: If Nesterov acceleration should be used
-        relax: (over)relaxation parameter, < 1.5
+        relax: (over)relaxation parameter, 0 < relax < 1.5
         e_rel: relative error of X
         max_iter: maximum iteration, irrespective of residual error
         traceback: utils.Traceback to hold variable histories
 
     Returns:
         X: optimized value
-
-    See also:
-        utils.AcceleratedProxF
     """
 
     # init
     X = X0.copy()
-    prox_f_ = utils.ProxWithMemory(prox_f, accelerated=accelerated)
+    stepper = utils.NesterovStepper(accelerated=accelerated)
 
     if relax is not None:
-        assert relax < 1.5
+        assert relax > 0 and relax < 1.5
 
     if traceback is not None:
         traceback.update_history(0, X=X, step_f=step_f)
         if accelerated:
-            traceback.update_history(0, omega=prox_f_.omega)
+            traceback.update_history(0, omega=0)
         if relax is not None:
             traceback.update_history(0, relax=relax)
 
     for it in range(max_iter):
 
-        X = prox_f_(X, step_f)
-        X_ = prox_f_.X_
+        # use Nesterov acceleration (if omega > 0), automatically incremented
+        omega = stepper.omega
+        if omega > 0:
+            _X = X + omega*(X - X_)
+        else:
+            _X = X
+        # make copy for convergence test and acceleration
+        X_ = X.copy()
+
+        # PGM step
+        X = prox_f(_X, step_f)
+
         if relax is not None:
             X += (relax-1)*(X - X_)
 
         if traceback is not None:
             traceback.update_history(it+1, X=X, step_f=step_f)
             if accelerated:
-                traceback.update_history(it+1, omega=prox_f_.omega)
+                traceback.update_history(it+1, omega=omega)
             if relax is not None:
                 traceback.update_history(it+1, relax=relax)
 
@@ -297,9 +304,6 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
 
     Returns:
         X: optimized value
-
-    See also:
-        utils.AcceleratedProxF
     """
     # Set up
     N = len(X0s)
@@ -307,12 +311,8 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
 
-    if not hasattr(relax, '__iter__'):
-        relax = [relax] * N
-    assert all([(relax[j] is None) or (relax[j] < 1.5) for j in range(N)])
-
-    if np.isscalar(accelerated):
-        accelerated = [accelerated] * N
+    if relax is not None:
+        assert relax > 0 and relax < 1.5
 
     assert update.lower() in ['cascade', 'block']
 
@@ -325,45 +325,66 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
         pass
 
     # init
-    X = X0s.copy()
-    proxs_f_ = [utils.ProxWithMemory(None, accelerated=accelerated[j]) for j in range(N)]
+    X = [X0s[j].copy() for j in range(N)]
+    X_ = [None] * N
+    if update.lower() == 'block':
+        X_block = [None] * N
 
-    it = 0
+    stepper = utils.NesterovStepper(accelerated=accelerated)
+
     if traceback is not None:
         for j in update_order:
-            traceback.update_history(it, j=j, X=X[j], steps_f=None)
-            if accelerated[j]:
-                traceback.update_history(it, j=j, omega=proxs_f_[j].omega)
+            traceback.update_history(0, j=j, X=X[j], steps_f=None)
+            if accelerated:
+                traceback.update_history(0, j=j, omega=0)
+            if relax is not None:
+                traceback.update_history(0, j=j, relax=relax)
 
-    while it < max_iter:
-
-        # cascading or blocking updates?
-        X_ = [X[j].copy() for j in range(N)]
+    for it in range(max_iter):
+        # use Nesterov acceleration (if omega > 0), automatically incremented
+        omega = stepper.omega
 
         # iterate over blocks X_j
         for j in update_order:
-            if update.lower() == 'block':
-                proxs_f_j = partial(proxs_f, j=j, Xs=X_)
-                steps_f_j = steps_f_cb(j, X_)
-            else:
-                proxs_f_j = partial(proxs_f, j=j, Xs=X)
-                steps_f_j = steps_f_cb(j, X)
-            proxs_f_[j].prox_f = proxs_f_j
-            X[j] = proxs_f_[j](X[j], steps_f_j)
 
-            if relax[j] is not None:
-                X[j] += (relax[j]-1)*(X[j] - X_[j])
+            # tell prox the state of other variables
+            proxs_f_j = partial(proxs_f, j=j, Xs=X)
+            steps_f_j = steps_f_cb(j, X)
+
+            # acceleration?
+            if omega > 0:
+                _X = X[j] + omega*(X[j] - X_[j])
+            else:
+                _X = X[j]
+
+            # keep copy for convergence test (and acceleration)
+            X_[j] = X[j].copy()
+
+            # PGM step
+            _X = proxs_f_j(_X, steps_f_j)
+
+            if relax is not None:
+                _X += (relax-1)*(_X - X_[j])
+
+            if update.lower() == 'block':
+                X_block[j] = _X
+            else:
+                X[j] = _X
 
             if traceback is not None:
-                traceback.update_history(it+1, j=j, X=X_[j], steps_f=steps_f_j)
+                traceback.update_history(it+1, j=j, X=_X, steps_f=steps_f_j)
                 if accelerated:
-                    traceback.update_history(it+1, j=j, omega=proxs_f_[j].omega)
+                    traceback.update_history(it+1, j=j, omega=omega)
+                if relax is not None:
+                    traceback.update_history(it+1, j=j, relax=relax)
+
+        if update.lower() == 'block':
+            for j in range(N):
+                X[j] = X_block[j]
 
         # test for fixed point convergence
         if all([utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]):
             break
-
-        it += 1
 
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
@@ -564,7 +585,6 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
 
         if all(convergence):
             break
-
         it += 1
 
     if it+1 >= max_iter:
