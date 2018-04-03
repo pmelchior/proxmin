@@ -532,7 +532,6 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     convergence, errors = [None] * N, [None] * N
     slack = [1.] * N
     it = 0
-    delta, l, Lmax = 0.999, 0, np.empty(N)
 
     if traceback:
         tr = utils.Traceback(N)
@@ -588,7 +587,6 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
             break
 
         it += 1
-        l = Lmax.min()
 
     if it+1 >= max_iter:
         logger.warning("Solution did not converge")
