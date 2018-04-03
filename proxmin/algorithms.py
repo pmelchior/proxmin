@@ -449,26 +449,20 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     """
 
     # use accelerated block-PGM if there's no proxs_g
-    if proxs_g is None or all([item is None for sublist in proxs_g for item in sublist]):
+    if proxs_g is None or not utils.hasNotNone(proxs_g):
         return bpgm(X0s, proxs_f, steps_f_cb, accelerated=True, update=update, update_order=update_order, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
 
     # Set up
     N = len(X0s)
-
-    # allow proxs_g to be None
-    if proxs_g is None:
-        proxs_g = [proxs_g] * N
-    if(len(proxs_g) != N):
-        raise ValueError("len(proxs_g)={0} != N={1}".format(len(proxs_g), N))
+    assert len(proxs_g) == N
+    assert update.lower() in ['cascade', 'block']
+    assert steps_g_update.lower() in ['steps_f', 'fixed', 'relative']
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
     if np.isscalar(e_abs):
         e_abs = [e_abs] * N
     steps_f = [None] * N
-
-    assert update.lower() in ['cascade', 'block']
-    assert steps_g_update.lower() in ['steps_f', 'fixed', 'relative']
 
     if update_order is None:
         update_order = range(N)

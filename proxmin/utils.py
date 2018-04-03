@@ -247,7 +247,6 @@ class NesterovStepper(object):
             t_ = 0.5*(1 + np.sqrt(4*self.t*self.t + 1))
             om = (self.t - 1)/t_
             self.t = t_
-            print ("omega = %.3f" % om)
             return om
         else:
             return 0
@@ -398,3 +397,14 @@ def check_convergence(newX, oldX, e_rel):
     norms = [np.sum(new_old), np.sum(old2)]
     convergent = norms[0] >= (1-e_rel**2)*norms[1]
     return convergent, norms
+
+def hasNotNone(l):
+    i = 0
+    for ll in l:
+        if ll is not None:
+            if hasattr(ll, '__iter__'):
+                for lll in ll:
+                    if lll is not None:
+                        return len(l) - i
+        i += 1
+    return 0

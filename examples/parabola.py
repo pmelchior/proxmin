@@ -227,16 +227,16 @@ if __name__ == "__main__":
         proxs_g = [[prox_xline]*M1, [prox_yline]*M2]
         tr = Traceback(N)
         x = pa.bsdmm(XY, prox_gradf12, steps_f12, proxs_g, max_iter=max_iter, traceback=tr)
-        plotResults(tr, "GLMM", boundary=boundary)
+        plotResults(tr, "bSDMM", boundary=boundary)
 
-        # GLMM with direct constraint projection
+        # bSDMM with direct constraint projection
         prox_gradf12_ = partial(prox_gradf_lim12, boundary=boundary)
         prox_g_direct = None
         tr = Traceback(N)
         x = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=tr)
-        plotResults(tr, "GLMM direct", boundary=boundary)
+        plotResults(tr, "bSDMM direct", boundary=boundary)
 
         # BPGM
         tr = Traceback(N)
         x = pa.bpgm(XY, prox_gradf12_, steps_f12, max_iter=max_iter, accelerated=True, traceback=tr)
-        plotResults(tr, "BPGM direct", boundary=boundary)
+        plotResults(tr, "bPGM", boundary=boundary)
