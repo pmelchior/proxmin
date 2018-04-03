@@ -228,5 +228,5 @@ if __name__ == "__main__":
         plotResults(tr, "GLMM direct", boundary=boundary)
 
         # BPGM
-        x, tr = pa.bpgm(XY, prox_gradf12_, steps_f12, max_iter=max_iter, traceback=True)
+        x, tr = pa.bpgm(XY, prox_gradf12_, steps_f12, max_iter=max_iter, accelerated=True, traceback=True)
         plotResults(tr, "BPGM direct", boundary=boundary)

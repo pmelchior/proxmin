@@ -341,16 +341,17 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
 
     # init
     X = X0s.copy()
-    prox_f_ = [utils.ProxWithMemory(None, accelerated=accelerated[j]) for j in range(N)]
+    proxs_f_ = [utils.ProxWithMemory(None, accelerated=accelerated[j]) for j in range(N)]
 
+    it = 0
     if traceback:
         tr = utils.Traceback(N)
         for j in update_order:
-            tr.update_history(0, j=j, X=X[j], steps_f=None)
+            tr.update_history(it, j=j, X=X[j], steps_f=None)
             if accelerated[j]:
-                tr.update_history(0, j=j, omega=prox_f_[j].omega)
+                tr.update_history(it, j=j, omega=proxs_f_[j].omega)
 
-    for it in range(max_iter):
+    while it < max_iter:
 
         # cascading or blocking updates?
         X_ = [X[j].copy() for j in range(N)]
@@ -363,7 +364,8 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
             else:
                 proxs_f_j = partial(proxs_f, j=j, Xs=X)
                 steps_f_j = steps_f_cb(j, X)
-            X[j] = proxs_f_j(X[j], steps_f_j)
+            proxs_f_[j].prox_f = proxs_f_j
+            X[j] = proxs_f_[j](X[j], steps_f_j)
 
             if relax[j] is not None:
                 X[j] += (relax[j]-1)*(X[j] - X_[j])
@@ -371,7 +373,7 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
             if traceback:
                 tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f_j)
                 if accelerated:
-                    tr.update_history(it+1, j=j, omega=prox_f_[j].omega)
+                    tr.update_history(it+1, j=j, omega=proxs_f_[j].omega)
 
         # test for fixed point convergence
         if all([utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]):
@@ -444,6 +446,10 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     Reference:
         Moolekamp & Melchior, Algorithm 3 (arXiv:1708.09066)
     """
+
+    # use accelerated block-PGM if there's no proxs_g
+    if proxs_g is None or all([item is None for sublist in proxs_g for item in sublist]):
+        return bpgm(X0s, proxs_f, steps_f_cb, accelerated=True, update=update, update_order=update_order, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
 
     # Set up
     N = len(X0s)
