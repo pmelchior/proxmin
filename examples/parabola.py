@@ -127,7 +127,7 @@ def steps_f12(j=None, Xs=None):
     """Stepsize for f update given current state of Xs"""
     # Lipschitz const is always 2
     L = 2
-    slack = 1.
+    slack = 0.1# 1.
     return slack / L
 
 
@@ -180,6 +180,7 @@ if __name__ == "__main__":
 
     # step sizes and proximal operators for boundary
     step_f = steps_f12()
+
     prox_g = partial(prox_lim, boundary=boundary)
     prox_gradf_ = partial(prox_gradf_lim, boundary=boundary)
 
@@ -225,3 +226,7 @@ if __name__ == "__main__":
         prox_g_direct = None
         x, tr = pa.bsdmm(XY, prox_gradf12_, steps_f12, prox_g_direct, max_iter=max_iter, traceback=True)
         plotResults(tr, "GLMM direct", boundary=boundary)
+
+        # BPGM
+        x, tr = pa.bpgm(XY, prox_gradf12_, steps_f12, max_iter=max_iter, traceback=True)
+        plotResults(tr, "BPGM direct", boundary=boundary)

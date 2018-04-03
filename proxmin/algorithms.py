@@ -283,6 +283,112 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         return X, tr
 
 
+def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=False):
+    """Block Proximal Gradient Method.
+
+    Also know as Alternating Proximal Gradient Method, it performs Proximal
+    gradient (forward-backward) updates on each block in alternating fashion.
+
+    Args:
+        X0s: list of initial Xs
+        proxs_f: proxed function f
+            Signature prox(X,step, j=None, Xs=None) -> X'
+        step_f: step size, < 1/L with L being the Lipschitz constant of grad f
+        steps_f_cb: callback function to compute step size for proxs_f[j]
+            Signature: steps_f_cb(j, Xs) -> Reals
+        update: update sequence between the blocks
+            'cascade': proxs_f are evaluated sequentually,
+                       update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
+            'block':   proxs_f are evaluated independently
+                       i.e. update for X_j^{k+1} is aware of X_l^k forall l.
+        update_order: list of components to update in desired order.
+                      Only relevant if update=='cascade'.
+        accelerated: If Nesterov acceleration should be used for all variables
+        relax: (over)relaxation parameter for each variable, < 1.5
+        e_rel: relative error of X
+        max_iter: maximum iteration, irrespective of residual error
+        traceback: whether a record of all optimization variables is kept
+
+    Returns:
+        X: optimized value
+        X, trace: adds utils.Traceback if traceback is True
+
+    See also:
+        utils.AcceleratedProxF
+    """
+    # Set up
+    N = len(X0s)
+
+    if np.isscalar(e_rel):
+        e_rel = [e_rel] * N
+
+    if not hasattr(relax, '__iter__'):
+        relax = [relax] * N
+    assert all([(relax[j] is None) or (relax[j] < 1.5) for j in range(N)])
+
+    if np.isscalar(accelerated):
+        accelerated = [accelerated] * N
+
+    assert update.lower() in ['cascade', 'block']
+
+    if update_order is None:
+        update_order = range(N)
+    else:
+        # we could check that every component is in the list
+        # but one can think of cases when a component is *not* to be updated.
+        #assert len(update_order) == N
+        pass
+
+    # init
+    X = X0s.copy()
+    prox_f_ = [utils.ProxWithMemory(None, accelerated=accelerated[j]) for j in range(N)]
+
+    if traceback:
+        tr = utils.Traceback(N)
+        for j in update_order:
+            tr.update_history(0, j=j, X=X[j], steps_f=None)
+            if accelerated[j]:
+                tr.update_history(0, j=j, omega=prox_f_[j].omega)
+
+    for it in range(max_iter):
+
+        # cascading or blocking updates?
+        X_ = [X[j].copy() for j in range(N)]
+
+        # iterate over blocks X_j
+        for j in update_order:
+            if update.lower() == 'block':
+                proxs_f_j = partial(proxs_f, j=j, Xs=X_)
+                steps_f_j = steps_f_cb(j, X_)
+            else:
+                proxs_f_j = partial(proxs_f, j=j, Xs=X)
+                steps_f_j = steps_f_cb(j, X)
+            X[j] = proxs_f_j(X[j], steps_f_j)
+
+            if relax[j] is not None:
+                X[j] += (relax[j]-1)*(X[j] - X_[j])
+
+            if traceback:
+                tr.update_history(it+1, j=j, X=X_[j], steps_f=steps_f_j)
+                if accelerated:
+                    tr.update_history(it+1, j=j, omega=prox_f_[j].omega)
+
+        # test for fixed point convergence
+        if all([utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]):
+            break
+
+        it += 1
+
+    if it+1 == max_iter:
+        logger.warning("Solution did not converge")
+    logger.info("Completed {0} iterations".format(it+1))
+
+    if not traceback:
+        return X
+    else:
+        return X, tr
+
+
 def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update='cascade', update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=False):
     """Block-Simultaneous Method of Multipliers.
 
@@ -338,6 +444,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     Reference:
         Moolekamp & Melchior, Algorithm 3 (arXiv:1708.09066)
     """
+
     # Set up
     N = len(X0s)
 
