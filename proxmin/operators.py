@@ -110,14 +110,14 @@ def prox_max_entropy(X, step, gamma=1):
     g(x) = gamma \sum_i x_i ln(x_i)
 
     has the analytical solution of gamma W(1/gamma exp((X-gamma)/gamma)), where
-    W is the Lambert W function. This would *minimize* the entropy g(x),
-    maximizing requires a few sign flips.
+    W is the Lambert W function.
     """
     from scipy.special import lambertw
     gamma_ = _step_gamma(step, gamma)
     # minimize entropy: return gamma_ * np.real(lambertw(np.exp((X - gamma_) / gamma_) / gamma_))
-
-    return - gamma_ * np.real(lambertw(np.exp(-(X + gamma_) / gamma_) / -gamma_))
+    above = X > 0
+    X[above] = gamma_ * np.real(lambertw(np.exp(X[above]/gamma_ - 1) / gamma_))
+    return X
 
 class AlternatingProjections(object):
     """Combine several proximal operators in the form of Alternating Projections
