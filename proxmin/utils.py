@@ -114,7 +114,7 @@ class MatrixAdapter(object):
         return self.L.__array_prepare__(*args)
 
     def __getattr__(self, attr):
-        if attr not in self.__dict__.keys:
+        if attr not in self.__dict__.keys():
             return getattr(self.L, attr)
 
 
@@ -401,11 +401,11 @@ def get_variable_errors(X, L, LX, Z, U, step_g, e_rel, e_abs=0):
     """
     n = X.size
     p = Z.size
-    e_pri2 = np.sqrt(p)*e_abs/L.spec_norm + e_rel*np.max([l2(LX), l2(Z)])
+    e_pri2 = np.sqrt(p)*e_abs/L.spectral_norm + e_rel*np.max([l2(LX), l2(Z)])
     if step_g is not None:
-        e_dual2 = np.sqrt(n)*e_abs/L.spec_norm + e_rel*l2(L.T.dot(U)/step_g)
+        e_dual2 = np.sqrt(n)*e_abs/L.spectral_norm + e_rel*l2(L.T.dot(U)/step_g)
     else:
-        e_dual2 = np.sqrt(n)*e_abs/L.spec_norm + e_rel*l2(L.T.dot(U))
+        e_dual2 = np.sqrt(n)*e_abs/L.spectral_norm + e_rel*l2(L.T.dot(U))
     return e_pri2, e_dual2
 
 def check_constraint_convergence(X, L, LX, Z, U, R, S, step_f, step_g, e_rel, e_abs):
