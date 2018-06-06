@@ -27,12 +27,14 @@ class MatrixAdapter(object):
     """
     def __init__(self, L, axis=None):
         # prevent cascade
+        spec_norm = None
         while isinstance(L, MatrixAdapter):
+            spec_norm = L._spec_norm
             axis = L.axis
             L = L.L
         self.L = L
         self.axis = axis
-        self._spec_norm = None
+        self._spec_norm = spec_norm
 
     @property
     def spectral_norm(self):
