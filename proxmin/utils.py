@@ -80,7 +80,6 @@ class MatrixAdapter(object):
 
     @property
     def ndim(self):
-        print(self.L.ndim)
         return self.L.ndim
 
     def __sub__(self, op):
