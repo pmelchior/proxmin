@@ -25,30 +25,31 @@ def get_spectral_norm(L):
 class MatrixAdapter(object):
     """Matrix adapter to deal with None and per-component application.
     """
-    def __init__(self, L, axis=None, spec_norm=None):
+    def __init__(self, L, axis=None):
         # prevent cascade
-        if isinstance(L, MatrixAdapter):
-            self.L = L.L
-            self.axis = L.axis
-            self.spec_norm = L.spec_norm
+        while isinstance(L, MatrixAdapter):
+            L = L.L
+            axis = L.axis
+        self.L = L
+        self.axis = axis
+        self._spec_norm = None
 
-        else:
-            self.L = L
-            self.axis = axis
+    @property
+    def spectral_norm(self):
+        if self._spec_norm is None:
             if self.L is not None:
-                if spec_norm is None:
-                    self.spec_norm = get_spectral_norm(self.L)
-                else:
-                    self.spec_norm = spec_norm
+                self._spec_norm = get_spectral_norm(self.L)
+                print ("and we're calculating spec norm...")
             else:
-                self.spec_norm = 1
+                self._spec_norm = 1
+        return self._spec_norm
 
     @property
     def T(self):
         if self.L is None:
             return self # NOT: self.L !!!
         # because we need to preserve axis for dot(), create a new adapter
-        return MatrixAdapter(self.L.T, axis=self.axis, spec_norm=self.spec_norm)
+        return MatrixAdapter(self.L.T, axis=self.axis)
 
     def dot(self, X):
         if self.L is None:
@@ -66,6 +67,55 @@ class MatrixAdapter(object):
             return self.L.dot(X.reshape(-1)).reshape(X.shape[0], -1)
         raise NotImplementedError("MatrixAdapter.dot() is not useful with axis=0.\n"
                                   "Use regular matrix dot product instead!")
+    def __len__(self):
+        return len(self.L)
+
+    @property
+    def shape(self):
+        return self.L.shape
+
+    @property
+    def size(self):
+        return self.L.size
+
+    @property
+    def ndim(self):
+        print(self.L.ndim)
+        return self.L.ndim
+
+    def __sub__(self, op):
+        return MatrixAdapter(self.L - op)
+
+    def __rsub__(self, op):
+        return MatrixAdapter(op - self.L)
+
+    def __add__(self, op):
+        return MatrixAdapter(self.L + op)
+
+    def __radd__(self, op):
+        return MatrixAdapter(op + self.L)
+
+    def __mul__(self, op):
+        return MatrixAdapter(self.L * op)
+
+    def __rmul__(self, op):
+        return MatrixAdapter(op * self.L)
+
+    def __div__(self, op):
+        return MatrixAdapter(self.L / op)
+
+    def __rdiv__(self, op):
+        return MatrixAdapter(self.L / op)
+
+    def reshape(self, shape):
+        return MatrixAdapter(self.L.reshape(shape))
+
+    def __array_prepare__(self, *args):
+        return self.L.__array_prepare__(*args)
+
+    def __getattr__(self, attr):
+        if attr not in self.__dict__.keys:
+            return getattr(self.L, attr)
 
 
 class Traceback(object):

@@ -113,7 +113,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
     _L = utils.MatrixAdapter(L)
     # get/check compatible step size for g
     if prox_g is not None and step_g is None:
-        step_g = utils.get_step_g(step_f, _L.spec_norm)
+        step_g = utils.get_step_g(step_f, _L.spectral_norm)
 
     # init
     X,Z,U = utils.initXZU(X0, _L)
@@ -219,7 +219,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         _L.append(utils.MatrixAdapter(Ls[i]))
         # get/check compatible step size for g
         if steps_g[i] is None:
-            steps_g[i] = utils.get_step_g(step_f, _L[i].spec_norm, M=M)
+            steps_g[i] = utils.get_step_g(step_f, _L[i].spectral_norm, M=M)
 
     # Initialization
     X,Z,U = utils.initXZU(X0, _L)
@@ -560,7 +560,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
             # ... or update them as required by the most conservative limit
             if steps_g_update.lower() == 'steps_f':
                 for i in range(M[j]):
-                    steps_g_[j][i] = utils.get_step_g(steps_f[j], _L[j][i].spec_norm, N=N, M=M[j])
+                    steps_g_[j][i] = utils.get_step_g(steps_f[j], _L[j][i].spectral_norm, N=N, M=M[j])
 
             # update the variables
             LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
