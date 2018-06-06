@@ -28,8 +28,8 @@ class MatrixAdapter(object):
     def __init__(self, L, axis=None):
         # prevent cascade
         while isinstance(L, MatrixAdapter):
-            L = L.L
             axis = L.axis
+            L = L.L
         self.L = L
         self.axis = axis
         self._spec_norm = None
