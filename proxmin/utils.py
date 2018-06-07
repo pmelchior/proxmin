@@ -41,7 +41,6 @@ class MatrixAdapter(object):
         if self._spec_norm is None:
             if self.L is not None:
                 self._spec_norm = get_spectral_norm(self.L)
-                print ("and we're calculating spec norm...")
             else:
                 self._spec_norm = 1
         return self._spec_norm
@@ -83,40 +82,6 @@ class MatrixAdapter(object):
     @property
     def ndim(self):
         return self.L.ndim
-
-    def __sub__(self, op):
-        return MatrixAdapter(self.L - op)
-
-    def __rsub__(self, op):
-        return MatrixAdapter(op - self.L)
-
-    def __add__(self, op):
-        return MatrixAdapter(self.L + op)
-
-    def __radd__(self, op):
-        return MatrixAdapter(op + self.L)
-
-    def __mul__(self, op):
-        return MatrixAdapter(self.L * op)
-
-    def __rmul__(self, op):
-        return MatrixAdapter(op * self.L)
-
-    def __div__(self, op):
-        return MatrixAdapter(self.L / op)
-
-    def __rdiv__(self, op):
-        return MatrixAdapter(self.L / op)
-
-    def reshape(self, shape):
-        return MatrixAdapter(self.L.reshape(shape))
-
-    def __array_prepare__(self, *args):
-        return self.L.__array_prepare__(*args)
-
-    def __getattr__(self, attr):
-        if attr not in self.__dict__.keys():
-            return getattr(self.L, attr)
 
 
 class Traceback(object):
