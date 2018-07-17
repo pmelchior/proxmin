@@ -448,10 +448,6 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
         Moolekamp & Melchior, Algorithm 3 (arXiv:1708.09066)
     """
 
-    # use accelerated block-PGM if there's no proxs_g
-    if proxs_g is None or not utils.hasNotNone(proxs_g):
-        return bpgm(X0s, proxs_f, steps_f_cb, accelerated=True, update=update, update_order=update_order, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
-
     # Set up
     N = len(X0s)
     assert len(proxs_g) == N
