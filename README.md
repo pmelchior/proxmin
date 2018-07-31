@@ -16,7 +16,7 @@ The algorithms:
 
 In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Factorization (NMF). As our algorithm allows an arbitrary number of constraints on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
 
-Details can be found in the [paper](http://arxiv.org/abs/1708.09066) *"Block-Simultaneous Direction Method of Multipliers — A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
+Details can be found in the [paper](http://arxiv.org/abs/1708.09066) *"Block-Simultaneous Direction Method of Multipliers - A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
 We ask that any published work that utilizes this package cites:
 ```
