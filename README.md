@@ -1,6 +1,7 @@
 [![PyPI](https://img.shields.io/pypi/v/proxmin.svg)](https://pypi.org/project/proxmin/)
 [![License](https://img.shields.io/github/license/pmelchior/proxmin.svg)](https://github.com/pmelchior/proxmin/blob/master/LICENSE.md)
 [![DOI](https://img.shields.io/badge/DOI-10.1007%2Fs11081--018--9380--y-blue.svg)](https://doi.org/10.1007/s11081-018-9380-y)
+[![arXiv](https://img.shields.io/badge/arxiv-1708.09066-red.svg)](http://arxiv.org/abs/1708.09066)
 
 # Proximal Minimization
 
@@ -16,12 +17,12 @@ The algorithms:
 
 In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Factorization (NMF). As our algorithm allows an arbitrary number of constraints on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
 
-Details can be found in the [paper](http://arxiv.org/abs/1708.09066) *"Block-Simultaneous Direction Method of Multipliers - A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
+Details can be found in the [paper](https://doi.org/10.1007/s11081-018-9380-y) *"Block-Simultaneous Direction Method of Multipliers - A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
 We ask that any published work that utilizes this package cites:
 ```
-@Article{proxmin,
-    author="Moolekamp, Fred and Melchior, Peter",
+@ARTICLE{proxmin,
+    author="{Moolekamp}, Fred and {Melchior}, Peter",
     title="Block-simultaneous direction method of multipliers: a proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints",
     journal="Optimization and Engineering",
     year="2018",
@@ -30,6 +31,9 @@ We ask that any published work that utilizes this package cites:
     issn="1573-2924",
     doi="10.1007/s11081-018-9380-y",
     url="https://doi.org/10.1007/s11081-018-9380-y"
+    archivePrefix="arXiv",
+    eprint={1708.09066},
+    primaryClass="math.OC"
 }
 ```
 Also, let us know (e.g. [@peter_melchior](https://twitter.com/peter_melchior)), we're curious.
