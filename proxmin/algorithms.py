@@ -27,6 +27,8 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
 
     Returns:
         X: optimized value
+        converged: whether the optimizer has converged within e_rel
+        error: X^it - X^it-1
     """
 
     # init
@@ -71,11 +73,13 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         if utils.l2sq(X - X_) <= e_rel**2*utils.l2sq(X):
             break
 
+    logger.info("Completed {0} iterations".format(it+1))
+    converged = True
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
-    logger.info("Completed {0} iterations".format(it+1))
+        converged = False
 
-    return X
+    return X, converged, X-X_
 
 
 def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
@@ -158,11 +162,11 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
             X_ = X.copy()
             R_ = R
 
+    logger.info("Completed {0} iterations".format(it+1))
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
-    logger.info("Completed {0} iterations".format(it+1))
 
-    return X
+    return X, convergence, error
 
 
 def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
@@ -269,11 +273,11 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         R_ = R
         X_ = X.copy()
 
+    logger.info("Completed {0} iterations".format(it+1))
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
-    logger.info("Completed {0} iterations".format(it+1))
 
-    return X
+    return X, convergence, errors
 
 
 def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=None):
@@ -290,7 +294,7 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
         steps_f_cb: callback function to compute step size for proxs_f[j]
             Signature: steps_f_cb(j, Xs) -> Reals
         update: update sequence between the blocks
-            'cascade': proxs_f are evaluated sequentually,
+            'cascade': proxs_f are evaluated sequentially,
                        update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
             'block':   proxs_f are evaluated independently
                        i.e. update for X_j^{k+1} is aware of X_l^k forall l.
@@ -383,14 +387,16 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
                 X[j] = X_block[j]
 
         # test for fixed point convergence
-        if all([utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]):
+        errors = [X[j] - X_[j] for j in range(N)]
+        convergence = [utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]
+        if all(convergence):
             break
 
+    logger.info("Completed {0} iterations".format(it+1))
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
-    logger.info("Completed {0} iterations".format(it+1))
 
-    return X
+    return X, convergence, errors
 
 
 def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update='cascade', update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=None):
@@ -417,7 +423,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
             If set, needs to have same format as proxs_g.
             Matrices can be numpy.array, scipy.sparse, or None (for identity).
         update: update sequence between the blocks
-            'cascade': proxs_f are evaluated sequentually,
+            'cascade': proxs_f are evaluated sequentially,
                        update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
             'block':   proxs_f are evaluated independently
                        i.e. update for X_j^{k+1} is aware of X_l^k forall l.
@@ -577,8 +583,8 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
             break
         it += 1
 
+    logger.info("Completed {0} iterations".format(it+1))
     if it+1 >= max_iter:
         logger.warning("Solution did not converge")
-    logger.info("Completed {0} iterations".format(it+1))
 
-    return X
+    return X, convergence, errors
