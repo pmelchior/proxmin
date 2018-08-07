@@ -8,7 +8,7 @@ from . import utils
 logging.basicConfig()
 logger = logging.getLogger("proxmin")
 
-def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=None):
+def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=None):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4.
@@ -16,7 +16,7 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
     from Xu & Yin (2015).
 
     Args:
-        X0: initial X
+        X: initial X, will be updated
         prox_f: proxed function f (the forward-backward step)
         step_f: step size, < 1/L with L being the Lipschitz constant of grad f
         accelerated: If Nesterov acceleration should be used
@@ -26,13 +26,11 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         traceback: utils.Traceback to hold variable histories
 
     Returns:
-        X: optimized value
         converged: whether the optimizer has converged within e_rel
         error: X^it - X^it-1
     """
 
     # init
-    X = X0.copy()
     stepper = utils.NesterovStepper(accelerated=accelerated)
 
     if relax is not None:
@@ -79,16 +77,16 @@ def pgm(X0, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=
         logger.warning("Solution did not converge")
         converged = False
 
-    return X, converged, X-X_
+    return converged, X-X_
 
 
-def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
+def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
     """Alternating Direction Method of Multipliers
 
     This method implements the linearized ADMM from Parikh & Boyd (2014).
 
     Args:
-        X0: initial X
+        X: initial X will be updated
         prox_f: proxed function f
         step_f: step size for prox_f
         prox_g: proxed function g
@@ -102,16 +100,12 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
         traceback: utils.Traceback to hold variable histories
 
     Returns:
-        X: optimized value
+        converged: whether the optimizer has converged within e_rel
+        error: X^it - X^it-1
 
     Reference:
         Moolekamp & Melchior, Algorithm 1 (arXiv:1708.09066)
     """
-
-    # no need for ADMM is prox_g is not set
-    # use accelerated APGM instead
-    if prox_g is None:
-        return pgm(X0, prox_f, step_f, accelerated=True, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
 
     # use matrix adapter for convenient & fast notation
     _L = utils.MatrixAdapter(L)
@@ -120,8 +114,7 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
         step_g = utils.get_step_g(step_f, _L.spectral_norm)
 
     # init
-    X,Z,U = utils.initXZU(X0, _L)
-    X_ = X.copy()
+    Z,U = utils.initZU(X, _L)
     it = 0
 
     if traceback is not None:
@@ -166,16 +159,16 @@ def admm(X0, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
 
-    return X, convergence, error
+    return convergence, error
 
 
-def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
+def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
     """Simultaneous-Direction Method of Multipliers
 
     This method is an extension of the linearized ADMM for multiple constraints.
 
     Args:
-        X0: initial X
+        X: initial X, will be updated
         prox_f: proxed function f
         step_f: step size for prox_f
         proxs_g: list of proxed functions
@@ -191,7 +184,8 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
         traceback: utils.Traceback to hold variable histories
 
     Returns:
-        X: optimized value
+        converged: whether the optimizer has converged within e_rel
+        error: X^it - X^it-1
 
     See also:
         algorithms.admm
@@ -202,7 +196,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
 
     # fall-back to simple ADMM
     if proxs_g is None or not hasattr(proxs_g, '__iter__'):
-        return admm(X0, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
+        return admm(X, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
 
     # from here on we know that proxs_g is a list
     M = len(proxs_g)
@@ -226,8 +220,7 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
             steps_g[i] = utils.get_step_g(step_f, _L[i].spectral_norm, M=M)
 
     # Initialization
-    X,Z,U = utils.initXZU(X0, _L)
-    X_ = X.copy()
+    Z,U = utils.initZU(X, _L)
     it, omega = 0, 0
 
     if traceback is not None:
@@ -277,29 +270,23 @@ def sdmm(X0, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
 
-    return X, convergence, errors
+    return convergence, errors
 
 
-def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=None):
+def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=None):
     """Block Proximal Gradient Method.
 
     Also know as Alternating Proximal Gradient Method, it performs Proximal
     gradient (forward-backward) updates on each block in alternating fashion.
 
     Args:
-        X0s: list of initial Xs
+        X: list of initial Xs, will be updated
         proxs_f: proxed function f
             Signature prox(X,step, j=None, Xs=None) -> X'
         step_f: step size, < 1/L with L being the Lipschitz constant of grad f
         steps_f_cb: callback function to compute step size for proxs_f[j]
             Signature: steps_f_cb(j, Xs) -> Reals
-        update: update sequence between the blocks
-            'cascade': proxs_f are evaluated sequentially,
-                       update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
-            'block':   proxs_f are evaluated independently
-                       i.e. update for X_j^{k+1} is aware of X_l^k forall l.
         update_order: list of components to update in desired order.
-                      Only relevant if update=='cascade'.
         accelerated: If Nesterov acceleration should be used for all variables
         relax: (over)relaxation parameter for each variable, < 1.5
         e_rel: relative error of X
@@ -307,18 +294,17 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
         traceback: utils.Traceback to hold variable histories
 
     Returns:
-        X: optimized value
+        converged: whether the optimizer has converged within e_rel
+        error: X^it - X^it-1
     """
     # Set up
-    N = len(X0s)
+    N = len(X)
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
 
     if relax is not None:
         assert relax > 0 and relax < 1.5
-
-    assert update.lower() in ['cascade', 'block']
 
     if update_order is None:
         update_order = range(N)
@@ -329,11 +315,7 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
         pass
 
     # init
-    X = [X0s[j].copy() for j in range(N)]
     X_ = [None] * N
-    if update.lower() == 'block':
-        X_block = [None] * N
-
     stepper = utils.NesterovStepper(accelerated=accelerated)
 
     if traceback is not None:
@@ -365,26 +347,17 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
             X_[j] = X[j].copy()
 
             # PGM step
-            _X = proxs_f_j(_X, steps_f_j)
+            X[j] = proxs_f_j(_X, steps_f_j)
 
             if relax is not None:
-                _X += (relax-1)*(_X - X_[j])
-
-            if update.lower() == 'block':
-                X_block[j] = _X
-            else:
-                X[j] = _X
+                X[j] += (relax-1)*(X[j] - X_[j])
 
             if traceback is not None:
-                traceback.update_history(it+1, j=j, X=_X, steps_f=steps_f_j)
+                traceback.update_history(it+1, j=j, X=X[j], steps_f=steps_f_j)
                 if accelerated:
                     traceback.update_history(it+1, j=j, omega=omega)
                 if relax is not None:
                     traceback.update_history(it+1, j=j, relax=relax)
-
-        if update.lower() == 'block':
-            for j in range(N):
-                X[j] = X_block[j]
 
         # test for fixed point convergence
         errors = [X[j] - X_[j] for j in range(N)]
@@ -396,10 +369,10 @@ def bpgm(X0s, proxs_f, steps_f_cb, update='cascade', update_order=None, accelera
     if it+1 == max_iter:
         logger.warning("Solution did not converge")
 
-    return X, convergence, errors
+    return convergence, errors
 
 
-def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update='cascade', update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=None):
+def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=None):
     """Block-Simultaneous Method of Multipliers.
 
     This method is an extension of the linearized SDMM, i.e. ADMM for multiple
@@ -409,7 +382,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     changes to other arguments.
 
     Args:
-        X0s: list of initial Xs
+        X: list of initial Xs, will be updated
         proxs_f: proxed function f
             Signature prox(X,step, j=None, Xs=None) -> X'
         steps_f_cb: callback function to compute step size for proxs_f[j]
@@ -422,13 +395,7 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
         Ls: linear operators of the argument of g_i.
             If set, needs to have same format as proxs_g.
             Matrices can be numpy.array, scipy.sparse, or None (for identity).
-        update: update sequence between the blocks
-            'cascade': proxs_f are evaluated sequentially,
-                       update for X_j^{k+1} is aware of X_l^{k+1} for l < j.
-            'block':   proxs_f are evaluated independently
-                       i.e. update for X_j^{k+1} is aware of X_l^k forall l.
         update_order: list of components to update in desired order.
-                      Only relevant if update=='cascade'.
         steps_g_update: relation between steps_g and steps_f (experts only!)
             'steps_f':  update steps_g as required by most conservative limit
             'fixed':    never update initial value of steps_g
@@ -440,7 +407,8 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
         traceback: utils.Traceback to hold variable histories
 
     Returns:
-        Xs: list of optimized values
+        converged: whether the optimizer has converged within e_rel
+        error: X^it - X^it-1
 
     Warning:
         Because of the potentially large list of optimization variables,
@@ -455,9 +423,10 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     """
 
     # Set up
-    N = len(X0s)
+    N = len(X)
+    if proxs_g is None:
+        proxs_g = [None] * N
     assert len(proxs_g) == N
-    assert update.lower() in ['cascade', 'block']
     assert steps_g_update.lower() in ['steps_f', 'fixed', 'relative']
 
     if np.isscalar(e_rel):
@@ -517,11 +486,10 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
             _L.append([ utils.MatrixAdapter(Ls[j][m]) for m in range(M[j])])
 
     # Initialization
-    X, Z, U = [],[],[]
+    Z, U = [],[]
     LX, R, S = [None] * N, [None] * N, [None] * N
     for j in range(N):
-        Xj, Zj, Uj = utils.initXZU(X0s[j], _L[j])
-        X.append(Xj)
+        Zj, Uj = utils.initZU(X[j], _L[j])
         Z.append(Zj)
         U.append(Uj)
 
@@ -543,16 +511,10 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
 
     while it < max_iter:
 
-        # cascading or blocking updates?
-        if update.lower() == 'block':
-            X_ = [X[j].copy() for j in range(N)]
-        else:
-            X_ = X
-
         # iterate over blocks X_j
         for j in update_order:
-            proxs_f_j = partial(proxs_f, j=j, Xs=X_)
-            steps_f_j = steps_f_cb(j, X_) * slack[j]
+            proxs_f_j = partial(proxs_f, j=j, Xs=X)
+            steps_f_j = steps_f_cb(j, X) * slack[j]
 
             # update steps_g relative to change of steps_f ...
             if steps_g_update.lower() == 'relative':
@@ -565,19 +527,15 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
                     steps_g_[j][i] = utils.get_step_g(steps_f[j], _L[j][i].spectral_norm, N=N, M=M[j])
 
             # update the variables
-            LX[j], R[j], S[j] = utils.update_variables(X_[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
+            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
 
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(X_[j], _L[j], LX[j], Z[j], U[j],
+            convergence[j], errors[j] = utils.check_constraint_convergence(X[j], _L[j], LX[j], Z[j], U[j],
                 R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
             # Optionally update the new state
             if traceback is not None:
-                traceback.update_history(it+1, j=j, X=X_[j], steps_f=steps_f[j])
+                traceback.update_history(it+1, j=j, X=X[j], steps_f=steps_f[j])
                 traceback.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
-
-        if update.lower() == 'block':
-            for j in range(N):
-                X[j] = X_[j]
 
         if all(convergence):
             break
@@ -587,4 +545,4 @@ def bsdmm(X0s, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update=
     if it+1 >= max_iter:
         logger.warning("Solution did not converge")
 
-    return X, convergence, errors
+    return convergence, errors

@@ -55,12 +55,12 @@ if __name__ == "__main__":
     W = None
 
     # initialize and run NMF
-    A0 = np.array([generateAmplitudes(k) for i in range(b)])
-    S0 = np.array([generateComponent(n) for i in range(k)])
+    A = np.array([generateAmplitudes(k) for i in range(b)])
+    S = np.array([generateComponent(n) for i in range(k)])
     p1 = partial(po.prox_unity_plus, axis=1)
     proxs_g=[[p1], None]
     tr = Traceback(2)
-    A, S = nmf(Y, A0, S0, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=tr)
+    nmf(Y, A, S, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=tr)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 

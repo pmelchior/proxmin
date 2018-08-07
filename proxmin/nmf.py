@@ -102,7 +102,7 @@ def normalizeMatrix(M, axis):
         norm = np.broadcast_to(norm, M.shape)
     return norm
 
-def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, return_errors=False, traceback=None):
+def nmf(Y, A, S, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, traceback=None):
     """Non-negative matrix factorization.
 
     This method solves the NMF problem
@@ -111,8 +111,8 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
 
     Args:
         Y:  target matrix MxN
-        A0: initial amplitude matrix MxK
-        S0: initial source matrix KxN
+        A: initial amplitude matrix MxK, will be updated
+        S: initial source matrix KxN, will be updated
         W: (optional weight matrix MxN)
         prox_A: direct projection contraint of A
         prox_S: direct projection constraint of S
@@ -129,13 +129,11 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
         max_iter: maximum iteration number, irrespective of current residuals
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
-        return_errors: whether convergence and variable errors are returned
         traceback: utils.Traceback to hold variable histories
 
     Returns:
-        A, S: updated amplitude and source matrices
-        convergence, errors: convergence test and iteration differences (
-            (only with `return_errors`)
+        converged: convence test for A,S
+        errors: difference between latest and previous iterations for A,S
 
     See also:
         algorithms.bsdmm for update_order and steps_g_update
@@ -159,15 +157,9 @@ def nmf(Y, A0, S0, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plu
     from functools import partial
     f = partial(prox_likelihood, Y=Y, WA=WA, WS=WS, prox_S=prox_S, prox_A=prox_A)
 
-    Xs = [A0, S0]
+    X = [A, S]
     # use accelerated block-PGM if there's no proxs_g
-    update = 'cascade'
     if proxs_g is None or not utils.hasNotNone(proxs_g):
-        res = algorithms.bpgm(Xs, f, steps_f, accelerated=True, update=update, update_order=update_order, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
+        return algorithms.bpgm(X, f, steps_f, accelerated=False, update_order=update_order, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
     else:
-        res = algorithms.bsdmm(Xs, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls, update=update, update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, traceback=traceback)
-
-    if return_errors:
-        return res
-    else:
-        return res[0]
+        return algorithms.bsdmm(X, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls, update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, traceback=traceback)

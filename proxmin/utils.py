@@ -267,8 +267,7 @@ class NesterovStepper(object):
         else:
             return 0
 
-def initXZU(X0, L):
-    X = X0.copy()
+def initZU(X, L):
     if not isinstance(L, list):
         Z = L.dot(X).copy()
         U = np.zeros(Z.shape, dtype=Z.dtype)
@@ -278,7 +277,7 @@ def initXZU(X0, L):
         for i in range(len(L)):
             Z.append(L[i].dot(X).copy())
             U.append(np.zeros(Z[i].shape, dtype=Z[i].dtype))
-    return X,Z,U
+    return Z,U
 
 def l2sq(x):
     """Sum the matrix elements squared
