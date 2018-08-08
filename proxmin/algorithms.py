@@ -338,7 +338,8 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
             steps_f_j = steps_f_cb(j, X)
 
             # acceleration?
-            if omega > 0:
+            # check for resizing: if resize ocurred, temporily skip acceleration
+            if omega > 0 and X[j].shape == X_[j].shape:
                 _X = X[j] + omega*(X[j] - X_[j])
             else:
                 _X = X[j]
@@ -360,7 +361,8 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
                     traceback.update_history(it+1, j=j, relax=relax)
 
         # test for fixed point convergence
-        errors = [X[j] - X_[j] for j in range(N)]
+        # allowing for transparent resizing of X: need to check shape of X_
+        errors = [X[j] - X_[j] if X[j].shape == X_[j].shape else X[j] for j in range(N)]
         converged = [utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]
         if all(converged):
             break
