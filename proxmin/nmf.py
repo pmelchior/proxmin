@@ -160,6 +160,6 @@ def nmf(Y, A, S, W=None, prox_A=operators.prox_plus, prox_S=operators.prox_plus,
     X = [A, S]
     # use accelerated block-PGM if there's no proxs_g
     if proxs_g is None or not utils.hasNotNone(proxs_g):
-        return algorithms.bpgm(X, f, steps_f, accelerated=False, update_order=update_order, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
+        return algorithms.bpgm(X, f, steps_f, accelerated=True, update_order=update_order, max_iter=max_iter, e_rel=e_rel, traceback=traceback)
     else:
         return algorithms.bsdmm(X, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls, update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, traceback=traceback)

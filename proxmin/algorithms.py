@@ -73,7 +73,7 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
 
     logger.info("Completed {0} iterations".format(it+1))
     converged = True
-    if it+1 == max_iter:
+    if it+1 == max_iter and not converged:
         logger.warning("Solution did not converge")
         converged = False
 
@@ -130,10 +130,10 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
             traceback.update_history(it+1, X=X, step_f=step_f, Z=Z, U=U, R=R, S=S,  step_g=step_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, error = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
+        converged, error = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
                                                                 step_f, step_g, e_rel, e_abs)
 
-        if convergence:
+        if converged:
             break
 
         it += 1
@@ -156,10 +156,10 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
             R_ = R
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 == max_iter:
+    if it+1 == max_iter and not converged:
         logger.warning("Solution did not converge")
 
-    return convergence, error
+    return converged, error
 
 
 def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
@@ -237,10 +237,10 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
             traceback.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        convergence, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g,
+        converged, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g,
                                                                  e_rel, e_abs)
 
-        if convergence:
+        if converged:
             break
 
         it += 1
@@ -267,10 +267,10 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
         X_ = X.copy()
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 == max_iter:
+    if it+1 == max_iter and not converged:
         logger.warning("Solution did not converge")
 
-    return convergence, errors
+    return converged, errors
 
 
 def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=None):
@@ -346,8 +346,8 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
             # keep copy for convergence test (and acceleration)
             X_[j] = X[j].copy()
 
-            # PGM step
-            X[j] = proxs_f_j(_X, steps_f_j)
+            # PGM step, force inline update
+            X[j][:] = proxs_f_j(_X, steps_f_j)
 
             if relax is not None:
                 X[j] += (relax-1)*(X[j] - X_[j])
@@ -361,15 +361,15 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
 
         # test for fixed point convergence
         errors = [X[j] - X_[j] for j in range(N)]
-        convergence = [utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]
-        if all(convergence):
+        converged = [utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]
+        if all(converged):
             break
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 == max_iter:
+    if it+1 == max_iter and not all(converged):
         logger.warning("Solution did not converge")
 
-    return convergence, errors
+    return converged, errors
 
 
 def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=None):
@@ -494,7 +494,7 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
         U.append(Uj)
 
     # containers
-    convergence, errors = [None] * N, [None] * N
+    converged, errors = [None] * N, [None] * N
     slack = [1.] * N
     it = 0
 
@@ -530,19 +530,19 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
             LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
 
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            convergence[j], errors[j] = utils.check_constraint_convergence(X[j], _L[j], LX[j], Z[j], U[j],
+            converged[j], errors[j] = utils.check_constraint_convergence(X[j], _L[j], LX[j], Z[j], U[j],
                 R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
             # Optionally update the new state
             if traceback is not None:
                 traceback.update_history(it+1, j=j, X=X[j], steps_f=steps_f[j])
                 traceback.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
 
-        if all(convergence):
+        if all(converged):
             break
         it += 1
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 >= max_iter:
+    if it+1 >= max_iter and not all(converged):
         logger.warning("Solution did not converge")
 
-    return convergence, errors
+    return converged, errors
