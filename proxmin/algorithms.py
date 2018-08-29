@@ -68,14 +68,13 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
                 traceback.update_history(it+1, relax=relax)
 
         # test for fixed point convergence
-        if utils.l2sq(X - X_) <= e_rel**2*utils.l2sq(X):
+        converged = utils.l2sq(X - X_) <= e_rel**2*utils.l2sq(X)
+        if converged:
             break
 
     logger.info("Completed {0} iterations".format(it+1))
-    converged = True
     if it+1 == max_iter and not converged:
         logger.warning("Solution did not converge")
-        converged = False
 
     return converged, X-X_
 
