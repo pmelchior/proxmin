@@ -146,7 +146,7 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
                     # re-init
                     it = 0
 
-                    X,Z,U  = utils.initXZU(X0, _L)
+                    Z,U  = utils.initZU(X, _L)
                     logger.info("Restarting with step_f = %.3f" % step_f)
                     if traceback is not None:
                         traceback.reset()
@@ -254,7 +254,7 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
                 # re-init
                 it = 0
 
-                X,Z,U  = utils.initXZU(X0, _L)
+                Z,U  = utils.initZU(X, _L)
                 if traceback is not None:
                     traceback.reset()
                     traceback.update_history(it, X=X, step_f=step_f)
