@@ -184,12 +184,10 @@ class Traceback(object):
                     self._store_variable(j, k, m, v[m])
 
 class ApproximateCache(object):
-    """Cache large arrays that don't change much
+    """Cache function evaluations that don't change much
 
-    Certain calculations, like `~proxmin.nmf.Steps_AS._one_over_lipschitzA`
-    take a long time to calculate. But after a few iterations, when the
-    matrices begin to converge, changes in the Lipschitz constant are small
-    and these functions become an unnecessary time sync.
+    Certain calculations take a long time but have little change after a few
+    iterations, so that these functions become an unnecessary time sink.
     This class allows the user to store these (and similar) values and
     only calculate them when there is a substantial change in the value.
 
@@ -267,8 +265,7 @@ class NesterovStepper(object):
         else:
             return 0
 
-def initXZU(X0, L):
-    X = X0.copy()
+def initZU(X, L):
     if not isinstance(L, list):
         Z = L.dot(X).copy()
         U = np.zeros(Z.shape, dtype=Z.dtype)
@@ -278,7 +275,7 @@ def initXZU(X0, L):
         for i in range(len(L)):
             Z.append(L[i].dot(X).copy())
             U.append(np.zeros(Z[i].shape, dtype=Z[i].dtype))
-    return X,Z,U
+    return Z,U
 
 def l2sq(x):
     """Sum the matrix elements squared
