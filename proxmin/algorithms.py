@@ -55,7 +55,7 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
         X_ = X.copy()
 
         # PGM step
-        X = prox_f(_X, step_f)
+        X[:] = prox_f(_X, step_f)
 
         if relax is not None:
             X += (relax-1)*(X - X_)
@@ -73,7 +73,7 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
             break
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 == max_iter and not converged:
+    if not converged:
         logger.warning("Solution did not converge")
 
     return converged, X-X_
@@ -155,7 +155,7 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
             R_ = R
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 == max_iter and not converged:
+    if not converged:
         logger.warning("Solution did not converge")
 
     return converged, error
@@ -266,7 +266,7 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
         X_ = X.copy()
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 == max_iter and not converged:
+    if not converged:
         logger.warning("Solution did not converge")
 
     return converged, errors
@@ -298,7 +298,6 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
     """
     # Set up
     N = len(X)
-
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
 
@@ -367,7 +366,7 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
             break
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 == max_iter and not all(converged):
+    if not all(converged):
         logger.warning("Solution did not converge")
 
     return converged, errors
@@ -543,7 +542,7 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
         it += 1
 
     logger.info("Completed {0} iterations".format(it+1))
-    if it+1 >= max_iter and not all(converged):
+    if not all(converged):
         logger.warning("Solution did not converge")
 
     return converged, errors
