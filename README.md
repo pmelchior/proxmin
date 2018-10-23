@@ -26,9 +26,9 @@ We ask that any published work that utilizes this package cites:
     title="Block-simultaneous direction method of multipliers: a proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints",
     journal="Optimization and Engineering",
     year="2018",
-    month="Mar",
-    day="20",
-    issn="1573-2924",
+    month="Dec",
+    volume=19,
+    issue=4,
     doi="10.1007/s11081-018-9380-y",
     url="https://doi.org/10.1007/s11081-018-9380-y"
     archivePrefix="arXiv",
