@@ -29,6 +29,7 @@ We ask that any published work that utilizes this package cites:
     month="Dec",
     volume=19,
     issue=4,
+    pages={871-885},
     doi="10.1007/s11081-018-9380-y",
     url="https://doi.org/10.1007/s11081-018-9380-y"
     archivePrefix="arXiv",
