@@ -1,6 +1,4 @@
 from __future__ import print_function, division
-import logging
-
 import numpy as np
 
 def get_spectral_norm(L):

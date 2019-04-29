@@ -1,11 +1,10 @@
 from __future__ import print_function, division
-import logging
 import numpy as np
 from functools import partial
 
 from . import utils
 
-logging.basicConfig()
+import logging
 logger = logging.getLogger("proxmin")
 
 def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=None):

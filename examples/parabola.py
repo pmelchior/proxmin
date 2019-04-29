@@ -3,6 +3,11 @@ from functools import partial
 from proxmin import algorithms as pa
 from proxmin.utils import Traceback
 
+import logging
+logging.basicConfig()
+logger = logging.getLogger('proxmin')
+logger.setLevel(logging.INFO)
+
 # location of true minimum of f
 dx,dy = 1,0.5
 

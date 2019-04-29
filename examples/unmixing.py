@@ -1,11 +1,17 @@
 from proxmin import nmf
 from proxmin.utils import Traceback
+from proxmin import operators as po
 from scipy.optimize import linear_sum_assignment
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from proxmin import operators as po
 from functools import partial
+
+# initialize and run NMF
+import logging
+logging.basicConfig()
+logger = logging.getLogger('proxmin')
+logger.setLevel(logging.INFO)
 
 def generateComponent(m):
     """Creates oscillating components to be mixed"""
@@ -54,7 +60,6 @@ if __name__ == "__main__":
     # if noise is variable, specify variance matrix of the same shape as Y
     W = None
 
-    # initialize and run NMF
     A = np.array([generateAmplitudes(k) for i in range(b)])
     S = np.array([generateComponent(n) for i in range(k)])
     p1 = partial(po.prox_unity_plus, axis=1)

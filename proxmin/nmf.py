@@ -1,9 +1,11 @@
 from __future__ import print_function, division
-import logging
 import numpy as np
 from . import operators
 from . import utils
 from . import algorithms
+
+import logging
+logger = logging.getLogger("proxmin")
 
 def delta_data(A, S, Y, W=1):
     return W*(A.dot(S) - Y)
