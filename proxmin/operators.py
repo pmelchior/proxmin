@@ -22,7 +22,8 @@ def prox_id(X, step):
 def prox_zero(X, step):
     """Proximal operator to project onto zero
     """
-    return np.zeros(X.shape, dtype=X.dtype)
+    X[:] = np.zeros(X.shape, dtype=X.dtype)
+    return X
 
 def prox_plus(X, step):
     """Projection onto non-negative numbers
@@ -34,12 +35,14 @@ def prox_plus(X, step):
 def prox_unity(X, step, axis=0):
     """Projection onto sum=1 along an axis
     """
-    return X / np.sum(X, axis=axis, keepdims=True)
+    X[:] = X / np.sum(X, axis=axis, keepdims=True)
+    return X
 
 def prox_unity_plus(X, step, axis=0):
     """Non-negative projection onto sum=1 along an axis
     """
-    return prox_unity(prox_plus(X, step), step, axis=axis)
+    X[:] = prox_unity(prox_plus(X, step), step, axis=axis)
+    return X
 
 def prox_min(X, step, thresh=0):
     """Projection onto numbers above `thresh`
@@ -72,7 +75,8 @@ def prox_components(X, step, prox=None, axis=0):
         Pk = [prox_list[k](X[k], step) for k in range(K)]
     if axis == 1:
         Pk = [prox_list[k](X[:,k], step) for k in range(K)]
-    return np.stack(Pk, axis=axis)
+    X[:] = np.stack(Pk, axis=axis)
+    return X
 
 
 #### Regularization function below ####
@@ -91,18 +95,21 @@ def prox_hard(X, step, thresh=0):
 def prox_hard_plus(X, step, thresh=0):
     """Hard thresholding with projection onto non-negative numbers
     """
-    return prox_plus(prox_hard(X, step, thresh=thresh), step)
+    X[:] = prox_plus(prox_hard(X, step, thresh=thresh), step)
+    return X
 
 def prox_soft(X, step, thresh=0):
     """Soft thresholding proximal operator
     """
     thresh_ = _step_gamma(step, thresh)
-    return np.sign(X)*prox_plus(np.abs(X) - thresh_, step)
+    X[:] = np.sign(X)*prox_plus(np.abs(X) - thresh_, step)
+    return X
 
 def prox_soft_plus(X, step, thresh=0):
     """Soft thresholding with projection onto non-negative numbers
     """
-    return prox_plus(prox_soft(X, step, thresh=thresh), step)
+    X[:] = prox_plus(prox_soft(X, step, thresh=thresh), step)
+    return X
 
 def prox_max_entropy(X, step, gamma=1):
     """Proximal operator for maximum entropy regularization.
