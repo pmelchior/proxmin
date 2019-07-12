@@ -186,7 +186,9 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
     Args:
         X: initial X will be updated
         prox_f: proxed function f
-        step_f: step size for prox_f
+        step_f: function to compute step size.
+            Should be smaller than 2/L with L the Lipschitz constant of grad
+            Signature: step(X, it) -> float
         prox_g: proxed function g
         step_g: specific value of step size for prox_g (experts only!)
             By default, set to the maximum value of step_f * ||L||_s^2.
@@ -207,25 +209,27 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
 
     # use matrix adapter for convenient & fast notation
     _L = utils.MatrixAdapter(L)
-    # get/check compatible step size for g
-    if prox_g is not None and step_g is None:
-        step_g = utils.get_step_g(step_f, _L.spectral_norm)
 
     # init
     Z,U = utils.initZU(X, _L)
     it = 0
+    slack = 1.
 
     while it < max_iter:
 
         if callback is not None:
             callback(X, it)
 
-        # Update the variables, return LX and primal/dual residual
-        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
+        step_f_ = slack * step_f(X, it)
 
-        # Optionally store the variables in the history
-        if traceback is not None:
-            traceback.update_history(it+1, X=X, step_f=step_f, Z=Z, U=U, R=R, S=S,  step_g=step_g)
+        # get/check compatible step size for g
+        if prox_g is not None and step_g is None:
+            step_g_ = utils.get_step_g(step_f_, _L.spectral_norm)
+        else:
+            step_g_ = step_g
+
+        # Update the variables, return LX and primal/dual residual
+        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f_, prox_g, step_g_, _L)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         converged, error = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
@@ -240,13 +244,12 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
         if prox_g is not None:
             if it > 1:
                 if (X == X_).all() and (R == R_).all():
-                    step_f /= 2
-                    step_g /= 2
+                    slack /= 2
+
                     # re-init
                     it = 0
-
                     Z,U  = utils.initZU(X, _L)
-                    logger.info("Restarting with step_f = %.3f" % step_f)
+                    logger.info("Restarting with step size slack = %.3f" % slack)
             X_ = X.copy()
             R_ = R
 
@@ -291,18 +294,14 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
 
     # fall-back to simple ADMM
     if proxs_g is None or not hasattr(proxs_g, '__iter__'):
-        return admm(X, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, e_rel=e_rel, max_iter=max_iter, traceback=traceback)
+        return admm(X, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, e_rel=e_rel, max_iter=max_iter, callback=callback)
 
     # from here on we know that proxs_g is a list
     M = len(proxs_g)
 
-    # if steps_g / Ls are None or single: create M duplicates
-    if not hasattr(steps_g, "__iter__"):
-        steps_g = [steps_g] * M
+    # if Ls are None or single: create M duplicates
     if not hasattr(Ls, "__iter__"):
         Ls = [Ls] * M
-    # check for cases in which a list was given
-    assert len(steps_g) == M
     assert len(Ls) == M
 
     # get/check compatible step sizes for g
@@ -310,25 +309,31 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
     _L = []
     for i in range(M):
         _L.append(utils.MatrixAdapter(Ls[i]))
-        # get/check compatible step size for g
-        if steps_g[i] is None:
-            steps_g[i] = utils.get_step_g(step_f, _L[i].spectral_norm, M=M)
 
     # Initialization
     Z,U = utils.initZU(X, _L)
     it, omega = 0, 0
+    slack = 1.
 
     while it < max_iter:
 
         if callback is not None:
             callback(X, it)
 
+        step_f_ = slack * step_f(X, it)
+
+        # get/check compatible step size for g
+        # get/check compatible step size for g
+        if steps_g is None:
+            steps_g_ = [ utils.get_step_g(step_f_, _L[i].spectral_norm, M=M) for i in range(M) ]
+        else:
+            steps_g_ = steps_g
+
         # update the variables
-        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
+        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f_, proxs_g, steps_g_, _L)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        converged, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g,
-                                                                 e_rel, e_abs)
+        converged, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f_, steps_g_, e_rel, e_abs)
 
         if converged:
             break
@@ -338,15 +343,12 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
         # if X and primal residual does not change: decrease step_f and step_g, and restart
         if it > 1:
             if (X == X_).all() and all([(R[i] == R_[i]).all() for i in range(M)]):
-                step_f /= 2
-                for i in range(M):
-                    steps_g[i] /= 2
+                slack /= 2
 
                 # re-init
                 it = 0
-
                 Z,U  = utils.initZU(X, _L)
-                logger.info("Restarting with step_f = %.3f" % step_f)
+                logger.info("Restarting with step size slack = %.3f" % slack)
 
         R_ = R
         X_ = X.copy()
