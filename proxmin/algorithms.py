@@ -7,7 +7,7 @@ from . import utils
 import logging
 logger = logging.getLogger("proxmin")
 
-def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=None):
+def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=None):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4.
@@ -16,8 +16,11 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
 
     Args:
         X: initial X, will be updated
-        prox_f: proxed function f (the forward-backward step)
-        step_f: step size, < 1/L with L being the Lipschitz constant of grad f
+        grad: gradient function of f wrt to X
+        step: function to compute step size.
+            Should be smaller than 2/L with L the Lipschitz constant of grad
+            Signature: step(X, it) -> float
+        prox: proximal operator of penalty function
         accelerated: If Nesterov acceleration should be used
         relax: (over)relaxation parameter, 0 < relax < 1.5
         e_rel: relative error of X
@@ -36,7 +39,7 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
         assert relax > 0 and relax < 1.5
 
     if traceback is not None:
-        traceback.update_history(0, X=X, step_f=step_f)
+        traceback.update_history(0, X=X, step=0)
         if accelerated:
             traceback.update_history(0, omega=0)
         if relax is not None:
@@ -53,14 +56,18 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
         # make copy for convergence test and acceleration
         X_ = X.copy()
 
-        # PGM step
-        X[:] = prox_f(_X, step_f)
+        # (P)GM step
+        g = grad(_X)
+        s = step(_X, it)
+        _X[:] -= s * g
+        if prox is not None:
+            X[:] = prox(_X, s)
 
         if relax is not None:
             X += (relax-1)*(X - X_)
 
         if traceback is not None:
-            traceback.update_history(it+1, X=X, step_f=step_f)
+            traceback.update_history(it+1, X=X, step=s)
             if accelerated:
                 traceback.update_history(it+1, omega=omega)
             if relax is not None:
@@ -68,6 +75,112 @@ def pgm(X, prox_f, step_f, accelerated=False, relax=None, e_rel=1e-6, max_iter=1
 
         # test for fixed point convergence
         converged = utils.l2sq(X - X_) <= e_rel**2*utils.l2sq(X)
+        if converged:
+            break
+
+    logger.info("Completed {0} iterations".format(it+1))
+    if not converged:
+        logger.warning("Solution did not converge")
+
+    return converged, X-X_
+
+
+def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, traceback=None):
+    """Proximal Adam and variants
+
+    Adam (Kingma & Ba 2015)
+    AMSGrad (Reddi, Kale & Kumar 2018)
+    PAdam (Chen & Gu 2018)
+    AdamX (Phuong & Phong 2019)
+
+    Uses sub-iterations to satisfy penalty.
+
+    Args:
+        X: initial X, will be updated
+        grad: gradient function of f wrt to X
+        step: function to compute step size.
+            Should be smaller than 2/L with L the Lipschitz constant of grad
+            Signature: step(X, it) -> float
+        prox: proximal operator of penalty function
+        algorithm: one of ["adam", "adamx", "amsgrad", "padam"]
+        b1: (float or array) first moment momentum decay
+        b2: second moment momentum decay
+        eps: softening of second moment (only for algorithm == "adam")
+        p: power of econd moment (only for algorithm == "padam")
+        e_rel: relative error of X
+        max_iter: maximum iteration, irrespective of residual error
+        traceback: utils.Traceback to hold variable histories
+
+    Returns:
+        converged: whether the optimizer has converged within e_rel
+        error: X^it - X^it-1
+    """
+    if not hasattr(b1, '__iter__'):
+        b1 = np.array([b1,] * max_iter)
+
+    assert len(b1) == max_iter
+    assert (b1 >= 0).all() and (b1 < 1).all()
+    assert b2 >= 0 and b2 < 1
+    assert eps >= 0
+    assert p > 0 and p <= 0.5
+    assert algorithm in ["adam", "adamx", "amsgrad", "padam"]
+
+    m = np.zeros(X.shape, X.dtype)
+    v = np.zeros(X.shape, X.dtype)
+    vhat = np.zeros(X.shape, X.dtype)
+
+    if traceback is not None:
+        traceback.update_history(0, X=X, g=np.zeros(X.shape, X.dtype), step=0, b1=b1[0], m=m, v=v, vhat=vhat, prox_it=0)
+
+    for it in range(max_iter):
+        X_ = X.copy()
+        g = grad(X)
+        s = step(X, it)
+
+        m = (1 - b1[it]) * g + b1[it] * m
+        v = (1 - b2) * (g**2) + b2 * v
+
+        if algorithm == "adam":
+            s *= np.sqrt(1 - b2**(it + 1)) / (1 - b1[it]**(it+1))
+            vhat = v
+        else:
+            factor = 1
+            if it > 0 and algorithm == "adamx":
+                factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
+            vhat = np.maximum(v, factor * vhat)
+
+        if algorithm == "padam":
+            denom = vhat**p
+        else:
+            denom = np.sqrt(vhat)
+
+        if algorithm == "adam":
+            denom += eps
+
+        X -= s * m / denom
+
+        prox_it = 0
+        if prox is not None:
+            h = np.sqrt(vhat)
+            # projected gradients
+            beta = np.max(h**2)
+            gamma = 1 / beta
+            Z = X.copy()
+            for prox_it in range(1, max_iter):
+                # h-metric norm
+                Z_ = prox(Z - gamma * h * (Z - X), gamma)
+
+                if utils.l2sq(Z_ - Z) <= e_rel**2*utils.l2sq(Z):
+                    break
+
+                Z = Z_
+
+            X[:] = Z
+
+        if traceback is not None:
+            traceback.update_history(it+1, X=X, g=g, step=s, b1=b1[it], m=m, v=v, vhat=vhat, prox_it=prox_it)
+
+        converged = utils.l2sq(X_ - X) <= e_rel**2*utils.l2sq(X)
         if converged:
             break
 
