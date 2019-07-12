@@ -7,7 +7,7 @@ from . import utils
 import logging
 logger = logging.getLogger("proxmin")
 
-def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, traceback=None):
+def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, callback=None):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4.
@@ -38,14 +38,10 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     if relax is not None:
         assert relax > 0 and relax < 1.5
 
-    if traceback is not None:
-        traceback.update_history(0, X=X, step=0)
-        if accelerated:
-            traceback.update_history(0, omega=0)
-        if relax is not None:
-            traceback.update_history(0, relax=relax)
-
     for it in range(max_iter):
+
+        if callback is not None:
+            callback(X, it)
 
         # use Nesterov acceleration (if omega > 0), automatically incremented
         omega = stepper.omega
@@ -66,13 +62,6 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
         if relax is not None:
             X += (relax-1)*(X - X_)
 
-        if traceback is not None:
-            traceback.update_history(it+1, X=X, step=s)
-            if accelerated:
-                traceback.update_history(it+1, omega=omega)
-            if relax is not None:
-                traceback.update_history(it+1, relax=relax)
-
         # test for fixed point convergence
         converged = utils.l2sq(X - X_) <= e_rel**2*utils.l2sq(X)
         if converged:
@@ -85,7 +74,7 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     return converged, X-X_
 
 
-def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, traceback=None):
+def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, callback=None):
     """Proximal Adam and variants
 
     Adam (Kingma & Ba 2015)
@@ -129,10 +118,11 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     v = np.zeros(X.shape, X.dtype)
     vhat = np.zeros(X.shape, X.dtype)
 
-    if traceback is not None:
-        traceback.update_history(0, X=X, g=np.zeros(X.shape, X.dtype), step=0, b1=b1[0], m=m, v=v, vhat=vhat, prox_it=0)
-
     for it in range(max_iter):
+
+        if callback is not None:
+            callback(X, it)
+
         X_ = X.copy()
         g = grad(X)
         s = step(X, it)
@@ -177,9 +167,6 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
 
             X[:] = Z
 
-        if traceback is not None:
-            traceback.update_history(it+1, X=X, g=g, step=s, b1=b1[it], m=m, v=v, vhat=vhat, prox_it=prox_it)
-
         converged = utils.l2sq(X_ - X) <= e_rel**2*utils.l2sq(X)
         if converged:
             break
@@ -191,7 +178,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     return converged, X-X_
 
 
-def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
+def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
     """Alternating Direction Method of Multipliers
 
     This method implements the linearized ADMM from Parikh & Boyd (2014).
@@ -228,10 +215,10 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
     Z,U = utils.initZU(X, _L)
     it = 0
 
-    if traceback is not None:
-        traceback.update_history(it, X=X, step_f=step_f, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype), S=np.zeros(X.shape, dtype=X.dtype), step_g=step_g)
-
     while it < max_iter:
+
+        if callback is not None:
+            callback(X, it)
 
         # Update the variables, return LX and primal/dual residual
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, prox_g, step_g, _L)
@@ -260,9 +247,6 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
 
                     Z,U  = utils.initZU(X, _L)
                     logger.info("Restarting with step_f = %.3f" % step_f)
-                    if traceback is not None:
-                        traceback.reset()
-                        traceback.update_history(it, X=X, Z=Z, U=U, R=np.zeros(Z.shape, dtype=Z.dtype), S=np.zeros(X.shape, dtype=X.dtype), step_f=step_f, step_g=step_g)
             X_ = X.copy()
             R_ = R
 
@@ -273,7 +257,7 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
     return converged, error
 
 
-def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, traceback=None):
+def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
     """Simultaneous-Direction Method of Multipliers
 
     This method is an extension of the linearized ADMM for multiple constraints.
@@ -334,18 +318,13 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
     Z,U = utils.initZU(X, _L)
     it, omega = 0, 0
 
-    if traceback is not None:
-        traceback.update_history(it, X=X, step_f=step_f, omega=omega)
-        traceback.update_history(it, M=M, Z=Z, U=U, R=U, S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
-
     while it < max_iter:
+
+        if callback is not None:
+            callback(X, it)
 
         # update the variables
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f, proxs_g, steps_g, _L)
-
-        if traceback is not None:
-            traceback.update_history(it+1, X=X, step_f=step_f, omega=omega)
-            traceback.update_history(it+1, M=M, Z=Z, U=U, R=R, S=S, steps_g=steps_g)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
         converged, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f, steps_g,
@@ -367,11 +346,6 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
                 it = 0
 
                 Z,U  = utils.initZU(X, _L)
-                if traceback is not None:
-                    traceback.reset()
-                    traceback.update_history(it, X=X, step_f=step_f)
-                    traceback.update_history(it, M=M, Z=Z, U=U, R=U,
-                                      S=[np.zeros(X.shape, dtype=X.dtype) for n in range(M)], steps_g=steps_g)
                 logger.info("Restarting with step_f = %.3f" % step_f)
 
         R_ = R
@@ -384,7 +358,7 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
     return converged, errors
 
 
-def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, traceback=None):
+def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, callback=None):
     """Block Proximal Gradient Method.
 
     Also know as Alternating Proximal Gradient Method, it performs Proximal
@@ -428,15 +402,11 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
     X_ = [None] * N
     stepper = utils.NesterovStepper(accelerated=accelerated)
 
-    if traceback is not None:
-        for j in update_order:
-            traceback.update_history(0, j=j, X=X[j], steps_f=None)
-            if accelerated:
-                traceback.update_history(0, j=j, omega=0)
-            if relax is not None:
-                traceback.update_history(0, j=j, relax=relax)
-
     for it in range(max_iter):
+
+        if callback is not None:
+            callback(X, it)
+
         # use Nesterov acceleration (if omega > 0), automatically incremented
         omega = stepper.omega
 
@@ -463,12 +433,6 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
             if relax is not None:
                 X[j] += (relax-1)*(X[j] - X_[j])
 
-            if traceback is not None:
-                traceback.update_history(it+1, j=j, X=X[j], steps_f=steps_f_j)
-                if accelerated:
-                    traceback.update_history(it+1, j=j, omega=omega)
-                if relax is not None:
-                    traceback.update_history(it+1, j=j, relax=relax)
 
         # test for fixed point convergence
         # allowing for transparent resizing of X: need to check shape of X_
@@ -484,7 +448,7 @@ def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=Non
     return converged, errors
 
 
-def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, traceback=None):
+def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, callback=None):
     """Block-Simultaneous Method of Multipliers.
 
     This method is an extension of the linearized SDMM, i.e. ADMM for multiple
@@ -610,18 +574,10 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
     slack = [1.] * N
     it = 0
 
-    if traceback is not None:
-        for j in update_order:
-            if M[j]>0:
-                _S = [np.zeros(X[j].shape, dtype=X[j].dtype) for n in range(M[j])]
-            else:
-                _S = np.zeros(X[j].shape, dtype=X[j].dtype)
-            traceback.update_history(it, j=j, X=X[j], steps_f=steps_f[j])
-            traceback.update_history(it, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j],
-                              R=U[j],
-                              S=[np.zeros(X[j].shape, dtype=X[j].dtype) for n in range(M[j])])
-
     while it < max_iter:
+
+        if callback is not None:
+            callback(X, it)
 
         # iterate over blocks X_j
         for j in update_order:
@@ -644,10 +600,6 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
             converged[j], errors[j] = utils.check_constraint_convergence(X[j], _L[j], LX[j], Z[j], U[j],
                 R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
-            # Optionally update the new state
-            if traceback is not None:
-                traceback.update_history(it+1, j=j, X=X[j], steps_f=steps_f[j])
-                traceback.update_history(it+1, j=j, M=M[j], steps_g=steps_g_[j], Z=Z[j], U=U[j], R=R[j], S=S[j])
 
         if all(converged):
             break
