@@ -7,6 +7,9 @@ from . import utils
 import logging
 logger = logging.getLogger("proxmin")
 
+def _copy_tuple(X):
+    return tuple(item.copy() for item in X)
+
 def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, callback=None):
     """Proximal Gradient Method
 
@@ -19,59 +22,77 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
         grad: gradient function of f wrt to X
         step: function to compute step size.
             Should be smaller than 2/L with L the Lipschitz constant of grad
-            Signature: step(X, it) -> float
-        prox: proximal operator of penalty function
-        accelerated: If Nesterov acceleration should be used
+            Signature: step(*X, it=it) -> float
+        prox: proximal operator for penalty functions
+        accelerated: if Nesterov acceleration should be used
         relax: (over)relaxation parameter, 0 < relax < 1.5
-        e_rel: relative error of X
-        max_iter: maximum iteration, irrespective of residual error
-        traceback: utils.Traceback to hold variable histories
+        e_rel: relative error of X sufficient for convergence
+        max_iter: maximum iteration
+        callback: arbitrary logging function
+            Signature: callback(*X, it=it)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
         error: X^it - X^it-1
     """
+    # Set up: turn X and prox into tuples
+    if type(X) not in (list, tuple):
+        X = (X,)
+    if type(prox) not in (list, tuple):
+        prox = (prox,)
 
-    # init
-    stepper = utils.NesterovStepper(accelerated=accelerated)
+    N = len(X)
+    if np.isscalar(e_rel):
+        e_rel = (e_rel,) * N
+
+    assert len(prox) == len(X)
+    assert len(e_rel) == len(X)
 
     if relax is not None:
         assert relax > 0 and relax < 1.5
 
+    # init
+    stepper = utils.NesterovStepper(accelerated=accelerated)
+
     for it in range(max_iter):
 
         if callback is not None:
-            callback(X, it)
+            callback(*X, it=it)
 
         # use Nesterov acceleration (if omega > 0), automatically incremented
         omega = stepper.omega
         if omega > 0:
-            _X = X + omega*(X - X_)
+            _X = tuple(X[j] + omega*(X[j] - X_[j]) for j in range(N))
         else:
             _X = X
+
         # make copy for convergence test and acceleration
-        X_ = X.copy()
+        X_ = _copy_tuple(X)
 
         # (P)GM step
-        g = grad(_X)
-        s = step(_X, it)
-        _X[:] -= s * g
-        if prox is not None:
-            X[:] = prox(_X, s)
+        G = grad(*_X)
+        S = step(*_X, it=it)
 
-        if relax is not None:
-            X += (relax-1)*(X - X_)
+        for j in range(N):
+            _X[j][:] -= S[j] * G[j]
+
+            if prox[j] is not None:
+                X[j][:] = prox[j](_X[j], S[j])
+
+            if relax is not None:
+                X[j][:] += (relax-1)*(X[j] - X_[j])
 
         # test for fixed point convergence
-        converged = utils.l2sq(X - X_) <= e_rel**2*utils.l2sq(X)
-        if converged:
+        errors = tuple(X[j] - X_[j] for j in range(N))
+        converged = tuple(utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+        if all(converged):
             break
 
     logger.info("Completed {0} iterations".format(it+1))
-    if not converged:
+    if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged, X-X_
+    return converged, errors
 
 
 def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, callback=None):
