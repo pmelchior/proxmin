@@ -82,6 +82,21 @@ class MatrixAdapter(object):
         return self.L.ndim
 
 
+class Traceback(object):
+    def __init__(self):
+        self._trace = []
+
+    def __call__(self, *X, it=None):
+        self._trace.append(tuple(x.copy() for x in X))
+
+    @property
+    def trace(self):
+        return self._trace
+
+    def clear(self):
+        self._trace = []
+
+
 class ApproximateCache(object):
     """Cache function evaluations that don't change much
 

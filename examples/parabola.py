@@ -15,20 +15,13 @@ def f(X):
     """Shifted parabola"""
     return np.sum((X - dX)**2, axis=-1)
 
-def grad_f(X):
-    return 2*(X - dX)
+def grad_f(*X):
+    return tuple(2*(x - dX) for x in X)
 
-def step_f(X, it):
+def step_f(*X, it=0):
     L = 2
     slowdown = 0.1 # to see behavior better
-    return slowdown * 1 / L
-
-trace = []
-def callback(X, it):
-    global trace
-    if it == 0:
-        trace = []
-    trace.append(X.copy())
+    return tuple(slowdown * 1 / L for x in X)
 
 def prox_circle(X, step):
     """Projection onto circle"""
@@ -93,7 +86,7 @@ def plotResults(trace, label="", boundary=None):
     ax = fig.add_subplot(111,aspect='equal')
     ax.contourf(r, 20, extent=(lims[0], lims[1], lims[0], lims[1]), cmap='Reds')
 
-    traj = np.array(trace)
+    traj = np.array(trace).reshape(len(trace), -1)
 
     ax.plot(traj[:,0], traj[:,1], 'b.', markersize=4, ls='-')
 
@@ -123,45 +116,52 @@ if __name__ == "__main__":
 
     prox = partial(prox_lim, boundary=boundary)
     max_iter = 1000
+    traceback = utils.Traceback()
 
     # PGM without boundary
     X = X0.copy()
-    pa.pgm(X, grad_f, step_f, max_iter=max_iter, relax=1, callback=callback)
-    plotResults(trace, "PGM no boundary")
+    pa.pgm(X, grad_f, step_f, max_iter=max_iter, relax=1, callback=traceback)
+    plotResults(traceback.trace, "PGM no boundary")
 
     # PGM
     X = X0.copy()
-    pa.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, callback=callback, accelerated=False)
-    plotResults(trace, "PGM", boundary=boundary)
+    traceback.clear()
+    pa.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, callback=traceback, accelerated=False)
+    plotResults(traceback.trace, "PGM", boundary=boundary)
 
     # APGM
     X = X0.copy()
-    pa.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, accelerated=True,  callback=callback)
-    plotResults(trace, "PGM accelerated", boundary=boundary)
+    traceback.clear()
+    pa.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, accelerated=True,  callback=traceback)
+    plotResults(traceback.trace, "PGM accelerated", boundary=boundary)
 
     # Adaptive moments methods: Adam and friends
     for algorithm in ["adam", "adamx", "amsgrad", "padam"]:
         X = X0.copy()
+        traceback.clear()
         b1 = 0.5
         if algorithm != "adam":
             b1 = b1 ** np.arange(1, max_iter+1)
-        pa.adam(X, grad_f, step_f, prox=prox, b1=b1, b2=0.999, max_iter=max_iter, callback=callback, algorithm=algorithm)
-        plotResults(trace,algorithm.upper(), boundary=boundary)
+        pa.adam(X, grad_f, step_f, prox=prox, b1=b1, b2=0.999, max_iter=max_iter, callback=traceback, algorithm=algorithm)
+        plotResults(traceback.trace, algorithm.upper(), boundary=boundary)
 
     # ADMM
     X = X0.copy()
-    pa.admm(X, prox_gradf, step_f, prox_g=prox, max_iter=max_iter, callback=callback)
-    plotResults(trace,"ADMM", boundary=boundary)
+    traceback.clear()
+    pa.admm(X, prox_gradf, step_f, prox_g=prox, max_iter=max_iter, callback=traceback)
+    plotResults(traceback.trace, "ADMM", boundary=boundary)
 
     # ADMM with direct constraint projection
     prox_direct = partial(prox_gradf_lim, boundary=boundary)
     X = X0.copy()
-    pa.admm(X, prox_direct, step_f, prox_g=None, max_iter=max_iter, callback=callback)
-    plotResults(trace,"ADMM direct", boundary=boundary)
+    traceback.clear()
+    pa.admm(X, prox_direct, step_f, prox_g=None, max_iter=max_iter, callback=traceback)
+    plotResults(traceback.trace, "ADMM direct", boundary=boundary)
 
     # SDMM
     M = 2
     proxs_g = [prox] * M # using same constraint several, i.e. M, times
     X = X0.copy()
-    pa.sdmm(X, prox_gradf, step_f, proxs_g=proxs_g, max_iter=max_iter, callback=callback)
-    plotResults(trace,"SDMM", boundary=boundary)
+    traceback.clear()
+    pa.sdmm(X, prox_gradf, step_f, proxs_g=proxs_g, max_iter=max_iter, callback=traceback)
+    plotResults(traceback.trace, "SDMM", boundary=boundary)

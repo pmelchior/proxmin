@@ -1,5 +1,6 @@
 from proxmin import nmf
 from proxmin import operators as po
+from proxmin.utils import Traceback
 from scipy.optimize import linear_sum_assignment
 import numpy as np
 import matplotlib.pyplot as plt
@@ -44,12 +45,6 @@ def match(A, S, trueS):
         resAT[arrangement[1][t]] = A.T[arrangement[0][t]]
     return resAT.T, resS
 
-trace = []
-def callback(*X, it=None):
-    global trace
-    if it == 0:
-        trace = []
-    trace.append(tuple(x.copy() for x in X))
 
 if __name__ == "__main__":
     n = 50 			# component resolution
@@ -68,7 +63,8 @@ if __name__ == "__main__":
     S = np.array([generateComponent(n) for i in range(k)])
     p1 = partial(po.prox_unity_plus, axis=1)
     proxs_g=[[p1], None]
-    nmf(Y, A, S, prox_A=p1, e_rel=1e-3, callback=callback)
+    traceback = Traceback()
+    nmf(Y, A, S, prox_A=p1, e_rel=1e-3, callback=traceback)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 
@@ -89,7 +85,7 @@ if __name__ == "__main__":
 
     # convergence plot from traceback
     convergences = []
-    for At,St in trace:
+    for At,St in traceback.trace:
         Y = np.dot(At, St)
         convergences.append(((Y - trueY)**2).sum())
     fig2 = plt.figure(figsize=(6,4))
