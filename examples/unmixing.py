@@ -1,5 +1,4 @@
 from proxmin import nmf
-from proxmin.utils import Traceback
 from proxmin import operators as po
 from scipy.optimize import linear_sum_assignment
 import numpy as np
@@ -45,6 +44,13 @@ def match(A, S, trueS):
         resAT[arrangement[1][t]] = A.T[arrangement[0][t]]
     return resAT.T, resS
 
+trace = []
+def callback(*X, it=None):
+    global trace
+    if it == 0:
+        trace = []
+    trace.append(tuple(x.copy() for x in X))
+
 if __name__ == "__main__":
     n = 50 			# component resolution
     k = 3 			# number of components
@@ -57,15 +63,12 @@ if __name__ == "__main__":
     trueS = np.array([generateComponent(n) for i in range(k)])
     trueY = np.dot(trueA,trueS)
     Y = add_noise(trueY, noise)
-    # if noise is variable, specify variance matrix of the same shape as Y
-    W = None
 
     A = np.array([generateAmplitudes(k) for i in range(b)])
     S = np.array([generateComponent(n) for i in range(k)])
     p1 = partial(po.prox_unity_plus, axis=1)
     proxs_g=[[p1], None]
-    tr = Traceback(2)
-    nmf(Y, A, S, W=W, prox_A=p1, e_rel=1e-6, e_abs=1e-6/noise**2, traceback=tr)
+    nmf(Y, A, S, prox_A=p1, e_rel=1e-3, callback=callback)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 
@@ -86,10 +89,8 @@ if __name__ == "__main__":
 
     # convergence plot from traceback
     convergences = []
-    As = tr['X',0]
-    Ss = tr['X',1]
-    for it in range(tr.it):
-        Y = np.dot(As[it], Ss[it])
+    for At,St in trace:
+        Y = np.dot(At, St)
         convergences.append(((Y - trueY)**2).sum())
     fig2 = plt.figure(figsize=(6,4))
     ax4 = fig2.add_subplot(111)
@@ -98,31 +99,3 @@ if __name__ == "__main__":
     ax4.set_ylabel("$||Y-AS||^2$")
     ax4.set_xlabel("Iterations")
     fig2.show()
-
-    """
-    # noise plot
-    #noises = np.linspace(0,0.05,21)
-    #repeat = 10
-    noises = [noise]
-    repeat = 1000
-    A_chi_squared = np.empty((len(noises), repeat))
-    S_chi_squared = np.empty((len(noises), repeat))
-    for i in range(len(noises)):
-        e = noises[i]
-        for r in range(repeat):
-            Y = add_noise(trueY, e)
-            A, S = nmf.nmf(Y, A0, S0, e_rel=1e-4, e_abs=1e-4, )
-            A, S = match(A, S, trueS)
-            A_chi_squared[i,r] = np.sum((A - trueA)**2)
-            S_chi_squared[i,r] = np.sum((S - trueS)**2)
-    fig3 = plt.figure(figsize=(6,4))
-    ax5 = fig3.add_subplot(111)
-    dof_A = A.shape[0]*A.shape[1]
-    dof_S = S.shape[0]*S.shape[1]
-    ax5.errorbar(noises, S_chi_squared.mean(axis=1)/dof_S, yerr=S_chi_squared.std(axis=1)/dof_S, label="$\chi^2_S$ / DOF")
-    ax5.errorbar(noises, A_chi_squared.mean(axis=1)/dof_A, yerr=A_chi_squared.std(axis=1)/dof_A, label="$\chi^2_A$ / DOF")
-    ax5.legend()
-    ax5.set_ylabel("Chi-squared")
-    ax5.set_xlabel("Standard deviation of noise")
-    fig3.show()
-    """
