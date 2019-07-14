@@ -22,14 +22,14 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
         grad: gradient function of f wrt to X
         step: function to compute step size.
             Should be smaller than 2/L with L the Lipschitz constant of grad
-            Signature: step(*X, it=it) -> float
+            Signature: step(*X, it=None) -> float
         prox: proximal operator for penalty functions
         accelerated: if Nesterov acceleration should be used
         relax: (over)relaxation parameter, 0 < relax < 1.5
         e_rel: relative error of X sufficient for convergence
         max_iter: maximum iteration
         callback: arbitrary logging function
-            Signature: callback(*X, it=it)
+            Signature: callback(*X, it=None)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
@@ -125,9 +125,21 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         converged: whether the optimizer has converged within e_rel
         error: X^it - X^it-1
     """
+    # Set up: turn X and prox into tuples
+    if type(X) not in (list, tuple):
+        X = (X,)
+    if type(prox) not in (list, tuple):
+        prox = (prox,)
+
+    N = len(X)
+    if np.isscalar(e_rel):
+        e_rel = (e_rel,) * N
+
     if not hasattr(b1, '__iter__'):
         b1 = np.array([b1,] * max_iter)
 
+    assert len(prox) == len(X)
+    assert len(e_rel) == len(X)
     assert len(b1) == max_iter
     assert (b1 >= 0).all() and (b1 < 1).all()
     assert b2 >= 0 and b2 < 1
@@ -135,68 +147,74 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     assert p > 0 and p <= 0.5
     assert algorithm in ["adam", "adamx", "amsgrad", "padam"]
 
-    m = np.zeros(X.shape, X.dtype)
-    v = np.zeros(X.shape, X.dtype)
-    vhat = np.zeros(X.shape, X.dtype)
+    M = [np.zeros(x.shape, x.dtype) for x in X]
+    V = [np.zeros(x.shape, x.dtype) for x in X]
+    Vhat = [np.zeros(x.shape, x.dtype) for x in X]
 
     for it in range(max_iter):
 
         if callback is not None:
-            callback(X, it)
+            callback(*X, it=it)
 
-        X_ = X.copy()
-        g = grad(X)
-        s = step(X, it)
+        X_ = _copy_tuple(X)
+        G = grad(*X)
+        S = step(*X, it=it)
 
-        m = (1 - b1[it]) * g + b1[it] * m
-        v = (1 - b2) * (g**2) + b2 * v
+        for j in range(N):
+            M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
+            V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
 
-        if algorithm == "adam":
-            s *= np.sqrt(1 - b2**(it + 1)) / (1 - b1[it]**(it+1))
-            vhat = v
-        else:
-            factor = 1
-            if it > 0 and algorithm == "adamx":
-                factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
-            vhat = np.maximum(v, factor * vhat)
+            if algorithm == "adam":
+                # decay terms folded into Vhat
+                Vhat[j] = V[j] / (1 - b2**(it + 1)) * (1 - b1[it]**(it+1))**2
+            else:
+                # maximum propagation of Vhat
+                factor = 1
+                if it > 0 and algorithm == "adamx":
+                    factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
+                Vhat[j] = np.maximum(V[j], factor * Vhat[j])
 
-        if algorithm == "padam":
-            denom = vhat**p
-        else:
-            denom = np.sqrt(vhat)
+            if algorithm == "padam":
+                denom = Vhat[j]**p
+            else:
+                denom = np.sqrt(Vhat[j])
 
-        if algorithm == "adam":
-            denom += eps
+            if algorithm == "adam":
+                denom += eps
 
-        X -= s * m / denom
+            X[j][:] -= S[j] * M[j] / denom
 
-        prox_it = 0
-        if prox is not None:
-            h = np.sqrt(vhat)
-            # projected gradients
-            beta = np.max(h**2)
-            gamma = 1 / beta
-            Z = X.copy()
-            for prox_it in range(1, max_iter):
-                # h-metric norm
-                Z_ = prox(Z - gamma * h * (Z - X), gamma)
+        # independent projection across
+        for j in range(N):
+            if prox[j] is not None:
+                if algorithm == "padam":
+                    h = Vhat[j]**p
+                else:
+                    h = np.sqrt(Vhat[j])
+                gamma = 1 / np.max(h**2)
+                Z = X[j].copy()
+                for prox_it in range(max_iter):
+                    # h-metric norm
+                    Z_ = prox[j](Z - gamma * h * (Z - X[j]), gamma)
 
-                if utils.l2sq(Z_ - Z) <= e_rel**2*utils.l2sq(Z):
-                    break
+                    if utils.l2sq(Z_ - Z) <= e_rel[j]**2*utils.l2sq(Z):
+                        break
 
-                Z = Z_
+                    Z = Z_
 
-            X[:] = Z
+                X[j][:] = Z
 
-        converged = utils.l2sq(X_ - X) <= e_rel**2*utils.l2sq(X)
-        if converged:
+        # test for fixed point convergence
+        errors = tuple(X[j] - X_[j] for j in range(N))
+        converged = tuple(utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+        if all(converged):
             break
 
     logger.info("Completed {0} iterations".format(it+1))
-    if not converged:
+    if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged, X-X_
+    return converged, errors
 
 
 def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
