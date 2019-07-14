@@ -15,13 +15,13 @@ def f(X):
     """Shifted parabola"""
     return np.sum((X - dX)**2, axis=-1)
 
-def grad_f(*X):
-    return tuple(2*(x - dX) for x in X)
+def grad_f(X):
+    return 2*(X - dX)
 
-def step_f(*X, it=0):
+def step_f(X, it=0):
     L = 2
     slowdown = 0.1 # to see behavior better
-    return tuple(slowdown * 1 / L for x in X)
+    return slowdown * 1 / L
 
 def prox_circle(X, step):
     """Projection onto circle"""

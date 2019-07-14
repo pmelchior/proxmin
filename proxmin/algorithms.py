@@ -10,6 +10,12 @@ logger = logging.getLogger("proxmin")
 def _copy_tuple(X):
     return tuple(item.copy() for item in X)
 
+def _as_tuple(X):
+    if type(X) in [list, tuple]:
+        return X
+    else:
+        return X,
+
 def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, callback=None):
     """Proximal Gradient Method
 
@@ -36,10 +42,8 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
         error: X^it - X^it-1
     """
     # Set up: turn X and prox into tuples
-    if type(X) not in (list, tuple):
-        X = (X,)
-    if type(prox) not in (list, tuple):
-        prox = (prox,)
+    X = _as_tuple(X)
+    prox = _as_tuple(prox)
 
     N = len(X)
     if np.isscalar(e_rel):
@@ -70,8 +74,8 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
         X_ = _copy_tuple(X)
 
         # (P)GM step
-        G = grad(*_X)
-        S = step(*_X, it=it)
+        G = _as_tuple(grad(*_X))
+        S = _as_tuple(step(*_X, it=it))
 
         for j in range(N):
             _X[j][:] -= S[j] * G[j]
@@ -110,7 +114,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         grad: gradient function of f wrt to X
         step: function to compute step size.
             Should be smaller than 2/L with L the Lipschitz constant of grad
-            Signature: step(X, it) -> float
+            Signature: step(*X, it=None) -> float
         prox: proximal operator of penalty function
         algorithm: one of ["adam", "adamx", "amsgrad", "padam"]
         b1: (float or array) first moment momentum decay
@@ -119,17 +123,15 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         p: power of econd moment (only for algorithm == "padam")
         e_rel: relative error of X
         max_iter: maximum iteration, irrespective of residual error
-        traceback: utils.Traceback to hold variable histories
+        callback: arbitrary logging function
+            Signature: callback(*X, it=None)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
         error: X^it - X^it-1
     """
-    # Set up: turn X and prox into tuples
-    if type(X) not in (list, tuple):
-        X = (X,)
-    if type(prox) not in (list, tuple):
-        prox = (prox,)
+    X = _as_tuple(X)
+    prox = _as_tuple(prox)
 
     N = len(X)
     if np.isscalar(e_rel):
@@ -157,8 +159,8 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
             callback(*X, it=it)
 
         X_ = _copy_tuple(X)
-        G = grad(*X)
-        S = step(*X, it=it)
+        G = _as_tuple(grad(*X))
+        S = _as_tuple(step(*X, it=it))
 
         for j in range(N):
             M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
@@ -227,7 +229,7 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
         prox_f: proxed function f
         step_f: function to compute step size.
             Should be smaller than 2/L with L the Lipschitz constant of grad
-            Signature: step(X, it) -> float
+            Signature: step(*X, it=None) -> float
         prox_g: proxed function g
         step_g: specific value of step size for prox_g (experts only!)
             By default, set to the maximum value of step_f * ||L||_s^2.
@@ -236,7 +238,8 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
         max_iter: maximum iteration number, irrespective of current residuals
-        traceback: utils.Traceback to hold variable histories
+        callback: arbitrary logging function
+            Signature: callback(*X, it=None)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
@@ -257,9 +260,9 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
     while it < max_iter:
 
         if callback is not None:
-            callback(X, it)
+            callback(X, it=it)
 
-        step_f_ = slack * step_f(X, it)
+        step_f_ = slack * step_f(X, it=it)
 
         # get/check compatible step size for g
         if prox_g is not None and step_g is None:
@@ -318,7 +321,8 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
         max_iter: maximum iteration number, irrespective of current residuals
-        traceback: utils.Traceback to hold variable histories
+        callback: arbitrary logging function
+            Signature: callback(*X, it=None)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
@@ -357,9 +361,9 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
     while it < max_iter:
 
         if callback is not None:
-            callback(X, it)
+            callback(X, it=it)
 
-        step_f_ = slack * step_f(X, it)
+        step_f_ = slack * step_f(X, it=it)
 
         # get/check compatible step size for g
         # get/check compatible step size for g
@@ -398,97 +402,7 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
 
     return converged, errors
 
-
-def bpgm(X, proxs_f, steps_f_cb, update_order=None, accelerated=False, relax=None, max_iter=1000, e_rel=1e-6, callback=None):
-    """Block Proximal Gradient Method.
-
-    Also know as Alternating Proximal Gradient Method, it performs Proximal
-    gradient (forward-backward) updates on each block in alternating fashion.
-
-    Args:
-        X: list of initial Xs, will be updated
-        proxs_f: proxed function f
-            Signature prox(X,step, j=None, Xs=None) -> X'
-        step_f: step size, < 1/L with L being the Lipschitz constant of grad f
-        steps_f_cb: callback function to compute step size for proxs_f[j]
-            Signature: steps_f_cb(j, Xs) -> Reals
-        update_order: list of components to update in desired order.
-        accelerated: If Nesterov acceleration should be used for all variables
-        relax: (over)relaxation parameter for each variable, < 1.5
-        e_rel: relative error of X
-        max_iter: maximum iteration, irrespective of residual error
-        traceback: utils.Traceback to hold variable histories
-
-    Returns:
-        converged: whether the optimizer has converged within e_rel
-        error: X^it - X^it-1
-    """
-    # Set up
-    N = len(X)
-    if np.isscalar(e_rel):
-        e_rel = [e_rel] * N
-
-    if relax is not None:
-        assert relax > 0 and relax < 1.5
-
-    if update_order is None:
-        update_order = range(N)
-    else:
-        # we could check that every component is in the list
-        # but one can think of cases when a component is *not* to be updated.
-        #assert len(update_order) == N
-        pass
-
-    # init
-    X_ = [None] * N
-    stepper = utils.NesterovStepper(accelerated=accelerated)
-
-    for it in range(max_iter):
-
-        if callback is not None:
-            callback(X, it)
-
-        # use Nesterov acceleration (if omega > 0), automatically incremented
-        omega = stepper.omega
-
-        # iterate over blocks X_j
-        for j in update_order:
-
-            # tell prox the state of other variables
-            proxs_f_j = partial(proxs_f, j=j, Xs=X)
-            steps_f_j = steps_f_cb(j, X)
-
-            # acceleration?
-            # check for resizing: if resize ocurred, temporily skip acceleration
-            if omega > 0 and X[j].shape == X_[j].shape:
-                _X = X[j] + omega*(X[j] - X_[j])
-            else:
-                _X = X[j]
-
-            # keep copy for convergence test (and acceleration)
-            X_[j] = X[j].copy()
-
-            # PGM step, force inline update
-            X[j][:] = proxs_f_j(_X, steps_f_j)
-
-            if relax is not None:
-                X[j] += (relax-1)*(X[j] - X_[j])
-
-
-        # test for fixed point convergence
-        # allowing for transparent resizing of X: need to check shape of X_
-        errors = [X[j] - X_[j] if X[j].shape == X_[j].shape else X[j] for j in range(N)]
-        converged = [utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N)]
-        if all(converged):
-            break
-
-    logger.info("Completed {0} iterations".format(it+1))
-    if not all(converged):
-        logger.warning("Solution did not converge")
-
-    return converged, errors
-
-
+# TODO !!!
 def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, callback=None):
     """Block-Simultaneous Method of Multipliers.
 
