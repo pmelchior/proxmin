@@ -132,25 +132,15 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     """
     X = _as_tuple(X)
     N = len(X)
-
-    has_prox, coupled_prox = False, False
-    if prox is not None:
-        has_prox = True
-        if N == 1:
-            prox = _as_tuple(prox)
-        else:
-            if type(prox) in [list, tuple]:
-                assert len(prox) == len(X)
-            elif hasattr(prox, '__call__'):
-                coupled_prox = True
-            else:
-                raise ValueError("Provide one prox for each variable or one for all variables")
+    has_prox = prox is not None
+    prox = _as_tuple(prox)
+    assert len(prox) == len(X)
 
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
 
     if not hasattr(b1, '__iter__'):
-        b1 = np.array([b1,] * max_iter)
+        b1 = np.array((b1,) * max_iter)
 
     assert len(e_rel) == len(X)
     assert len(b1) == max_iter
@@ -207,37 +197,24 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
             gamma = tuple(1 / np.max(h[j]**2) for j in range(N))
 
             # proximal projection with metric h
-            if not coupled_prox:
-                for j in range(N):
-                    for prox_it in range(max_iter):
-                        Z_ = prox[j](Z[j] - gamma[j] * h[j] * (Z[j] - X[j]), gamma)
-
-                        converged = utils.l2sq(Z_ - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j])
-                        Z[j][:] = Z_
-
-                        if converged:
-                            break
-
-                    logger.debug("Proximal sub-iterations for variable {}: {}".format(j, prox_it+1))
-
-            # coupled projection across parameters
-            else:
+            for j in range(N):
                 for prox_it in range(max_iter):
-                    Z_ = prox(tuple(Z[j] - gamma[j] * h[j] * (Z[j] - X[j]) for j in range(N)), gamma)
+                    Z_ = prox[j](Z[j] - gamma[j] * h[j] * (Z[j] - X[j]), gamma)
 
-                    converged = tuple(utils.l2sq(Z_[j] - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j]) for j in range(N))
-                    Z = Z_
+                    converged = utils.l2sq(Z_ - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j])
+                    Z[j][:] = Z_
 
-                    if all(converged):
-                        logger.debug("Proximal sub-iterations: {}".format(prox_it+1))
+                    if converged:
                         break
 
-            for j in range(N):
+                logger.debug("Proximal sub-iterations for variable {}: {}".format(j, prox_it+1))
+
                 X[j][:] = Z[j]
 
         # test for fixed point convergence
         errors = tuple(X[j] - X_[j] for j in range(N))
         converged = tuple(utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+
         if all(converged):
             break
 
