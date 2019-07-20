@@ -131,16 +131,27 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         error: X^it - X^it-1
     """
     X = _as_tuple(X)
-    prox = _as_tuple(prox)
-
     N = len(X)
+
+    has_prox, coupled_prox = False, False
+    if prox is not None:
+        has_prox = True
+        if N == 1:
+            prox = _as_tuple(prox)
+        else:
+            if type(prox) in [list, tuple]:
+                assert len(prox) == len(X)
+            elif hasattr(prox, '__call__'):
+                coupled_prox = True
+            else:
+                raise ValueError("Provide one prox for each variable or one for all variables")
+
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
 
     if not hasattr(b1, '__iter__'):
         b1 = np.array([b1,] * max_iter)
 
-    assert len(prox) == len(X)
     assert len(e_rel) == len(X)
     assert len(b1) == max_iter
     assert (b1 >= 0).all() and (b1 < 1).all()
@@ -186,25 +197,43 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
 
             X[j][:] -= S[j] * M[j] / denom
 
-        # independent projection across
-        for j in range(N):
-            if prox[j] is not None:
-                if algorithm == "padam":
-                    h = Vhat[j]**p
-                else:
-                    h = np.sqrt(Vhat[j])
-                gamma = 1 / np.max(h**2)
-                Z = X[j].copy()
+
+        if has_prox:
+            Z = _copy_tuple(X)
+            if algorithm == "padam":
+                h = tuple(Vhat[j]**p for j in range(N))
+            else:
+                h = tuple(np.sqrt(Vhat[j]) for j in range(N))
+            gamma = tuple(1 / np.max(h[j]**2) for j in range(N))
+
+            # proximal projection with metric h
+            if not coupled_prox:
+                for j in range(N):
+                    for prox_it in range(max_iter):
+                        Z_ = prox[j](Z[j] - gamma[j] * h[j] * (Z[j] - X[j]), gamma)
+
+                        converged = utils.l2sq(Z_ - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j])
+                        Z[j][:] = Z_
+
+                        if converged:
+                            break
+
+                    logger.debug("Proximal sub-iterations for variable {}: {}".format(j, prox_it+1))
+
+            # coupled projection across parameters
+            else:
                 for prox_it in range(max_iter):
-                    # h-metric norm
-                    Z_ = prox[j](Z - gamma * h * (Z - X[j]), gamma)
+                    Z_ = prox(tuple(Z[j] - gamma[j] * h[j] * (Z[j] - X[j]) for j in range(N)), gamma)
 
-                    if utils.l2sq(Z_ - Z) <= e_rel[j]**2*utils.l2sq(Z):
-                        break
-
+                    converged = tuple(utils.l2sq(Z_[j] - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j]) for j in range(N))
                     Z = Z_
 
-                X[j][:] = Z
+                    if all(converged):
+                        logger.debug("Proximal sub-iterations: {}".format(prox_it+1))
+                        break
+
+            for j in range(N):
+                X[j][:] = Z[j]
 
         # test for fixed point convergence
         errors = tuple(X[j] - X_[j] for j in range(N))
