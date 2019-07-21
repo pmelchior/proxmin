@@ -5,17 +5,17 @@
 
 # Proximal Minimization
 
-The methods in this package provide solvers for constrained optimization problems. All of them use proximal operators to deal with non-smooth constraint functions.
+The methods in this package provide solvers for constrained optimization problems. All of them use proximal operators to deal with non-smooth penalty functions.
 
 The algorithms:
 
-* **Proximal Gradient Method (PGM)**: *forward-backward* split with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) constraint function. Nesterov acceleration is available.
-* **Block/Alternating Proximal Gradient Method (bPGM)**: Extension of PGM to objective functions that are convex in several arguments; optional Nesterov acceleration.
-* **Alternating Direction Method of Multipliers (ADMM)**: Rachford-Douglas split for two potentially non-smooth functions. We use the linearized form of it solve for additional linear mappings in the constraint functions.
-* **Simultaneous Direction Method of Multipliers (SDMM)**: Extension of linearized ADMM for several constraint functions.
+* **Proximal Gradient Method (PGM)**: *forward-backward* splitting with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) penalty function. Includes multi-block optimization and Nesterov acceleration.
+* **Adam and derivatives**: forward-backward splitting with gradient adaptive gradient steps for single- and multi-block optimization. Requires proximal sub-iterations.
+* **Alternating Direction Method of Multipliers (ADMM)**: Rachford-Douglas splitting for two potentially non-smooth functions. We use its linearized form to solve for additional linear mappings in the penalty functions.
+* **Simultaneous Direction Method of Multipliers (SDMM)**: Extension of linearized ADMM for several penalty functions.
 * **Block-Simultaneous Direction Method of Multipliers (bSDMM)**: Extension of SDMM to work with objective functions that are convex in several arguments. It's a proximal version of Block coordinate descent methods.
 
-In addition, bSDMM is used as the backend of a solver for Non-negative Matrix Factorization (NMF). As our algorithm allows an arbitrary number of constraints on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
+Two-block PGM or bSDMM is used as the backend solvers for Non-negative Matrix Factorization (NMF). As our algorithm allows any proxable function as constraint on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
 
 Details can be found in the [paper](https://doi.org/10.1007/s11081-018-9380-y) *"Block-Simultaneous Direction Method of Multipliers - A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
@@ -51,77 +51,61 @@ The code works on python>2.7 and requires numpy and scipy.
 
 ## Approach
 
-All algorithms accept functions only in their proxed form, i.e. they call the respective proximal operators. As user you have to provide the proximal operator(s) for your problem and the step size(s).
+The gradient-based methods PGM and Adam expect two callback function: one to compute the gradients, the other to compute step sizes. In the former case, the step sizes are bound between 0 and 2/L, where L is the Lipschitz constant of the gradient.
 
-An example (minimum of a shifted parabola on the unit circle):
+The penalty functions are given as proximal mappings: `X <- prox(X, step)`. 
+
+Many proximal operators can be constructed analytically, see e.g. [Parikh & Boyd (2014)](https://web.stanford.edu/~boyd/papers/prox_algs.html). We provide a number of common ones in `proxmin.operators`. An important class of constraints are indicator functions of convex sets, for which the proximal operator, given some point **X**, returns the closes point to **X** in the Euclidean norm that is in the set. 
+
+**Example:** find the minimum of a shifted parabola on the unit circle in 2D
 
 ```python
-dx,dy,radius = 1,0.5,1
+import numpy as np
+import proxmin
+
+dX = np.array([1.,0.5])
+radius = 1
 
 def f(X):
     """Shifted parabola"""
-    x,y = X
-    return (x-dx)**2 + (y-dy)**2
-
-def grad_fx(X):
-    """Gradient of f wrt x"""
-    xy = X
-    return 2*x - 2*dx
-
-def grad_fy(X):
-    """Gradient of f wrt y"""
-    x,y = X
-    return 2*y - 2*dy
+    return np.sum((X - dX)**2, axis=-1)
 
 def grad_f(X):
-    """Gradient of f"""
-    return np.array([grad_fx(X),grad_fy(X)])
+    return 2*(X - dX)
+
+def step_f(X, it=0):
+    L = 2. # Lipschitz constant of grad f
+    return 1 / L
 
 def prox_circle(X, step):
-    """Projection onto circle of radius r"""
+    """Projection onto circle"""
     center = np.array([0,0])
-    dxy = X - center
-    phi = np.arctan2(dxy[1], dxy[0])
+    dX = X - center
+    # exclude everything other than perimeter of circle
+    phi = np.arctan2(dX[1], dX[0])
     return center + radius*np.array([np.cos(phi), np.sin(phi)])
+
+X = np.array([-1.,-1.]) # or whereever
+converged = proxmin.pgm(X, grad_f, step_f, prox=prox_circle)
 ```
 
-Many proximal operators can be constructed analytically, see e.g. [Parikh & Boyd (2014)](https://web.stanford.edu/~boyd/papers/prox_algs.html). We provide a number of common ones in `proxmin.operators`. An important class of constraints are indicator functions of convex sets, for which the proximal operator, given some point **X**, returns the closes point to **X** in the Euclidean norm that is in the set. That is what `prox_circle` above does.
+Since objective function is smooth and there is only one constraint, one can simply perform a sequence of *forward-backward* steps:  step in gradient direction, followed by a projection onto the constraint subset. That is the essence of the proximal gradient method.
 
-If the objective function is smooth and there is only one constraint, one can simply perform a sequence of *forward-backward* steps:  step in gradient direction, followed by a projection onto the constraint.
+If the first function is not smooth, one can use ADMM. It allows for two functions (the objective and one penalty) to be satisfied, but it treats them *separately*. Unlike PGM, the constraint is only met at the end of the optimization and only within some error tolerance.
+
+Continuing the example above, the smooth function gets turned into a proxed function by performing the gradient step internally and returning the updated position:
 
 ```python
-from proxmin import algorithms as pa
 def prox_gradf(X, step):
     """Proximal gradient step"""
     return X-step*grad_f(X)
 
-def prox_gradf_circle(X, step):
-    """Proximal torward-backward step"""
-    return prox_circle(prox_gradf(X,step), step)
-
-# Run proximal gradient method
-L = 2         # Lipschitz constant of grad f
-step_f = 1./L # maximum step size of smooth function: 1/L
-X0 = np.array([-1,0])
-# X: updated quantity
-# convergence: if iterate difference are smaller than relative error
-# error: X^{it} - X^{it-1}
-X, convergence, error = pa.pgm(X0, prox_gradf_circle, step_f)
-# or with Nesterov acceleration
-X, convergence, error = pa.apgm(X0, prox_gradf_circle, step_f)  
+convergence = proxmin.admm(X, prox_gradf, step_f, prox_g=prox_circle, e_rel=1e-3, e_abs=1e-3)
 ```
-
-If the objective function is not smooth, one can use ADMM. This also allows for two functions (the objective and one constraint ) to be satisfied, but it treats them *separately*. Unlike PGM, the constraint is only met at the end of the optimization and only within some error tolerance.
-
-```python
-X, convergence, error = pa.admm(X, prox_gradf, step_f, prox_circle, e_rel=1e-3, e_abs=1e-3)
-```
-
-A fully working example to demonstrate the principle of operations is [examples/parabola.py] that find the minimum of a 2D parabola under hard boundary constraints (on a shifted circle or the intersection of lines).
 
 ## Constrained matrix factorization (CMF)
 
-We have developed this package with a few application cases in mind. One is matrix factorization under constraints on the matrix factors, i.e. describing a target matrix **Y** as a product of **A S**. If those constraints are only non-negativity, the method is known as NMF.
+Matrix factorization seeks to approximate a target matrix `Y` as a product of `np.dot(A,S)`. If those constraints are only non-negativity, the method is known as NMF.
 
 We have extended the capabilities substantially by allowing for an arbitrary number of constraints to be enforced. As above, the constraints and the objective function will be accessed through their proximal operators only.
 

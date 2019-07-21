@@ -83,103 +83,19 @@ class MatrixAdapter(object):
 
 
 class Traceback(object):
-    """Container structure for traceback of algorithm behavior.
-    """
-    def __init__(self, N=1):
-        # offset is used when the iteration counter is reset
-        # so that the number of iterations can be used to make sure that
-        # all of the variables are being updated properly
-        self.offset = 0
-        # Number of variables
-        self.N = N
-        self.history = [{} for n in range(N)]
+    def __init__(self):
+        self._trace = []
 
-    def __repr__(self):
-        message = "Traceback:\n"
-        for k,v in self.__dict__.items():
-            message += "\t%s: %r\n" % (k,v)
-        return message
-
-    def __len__(self):
-        h = self.history[0]
-        return len(h[next(iter(h))][0])
+    def __call__(self, *X, it=None):
+        self._trace.append(tuple(x.copy() for x in X))
 
     @property
-    def it(self):
-        # number of iterations since last reset, minus initialization record
-        return self.__len__() - self.offset - 1
+    def trace(self):
+        return self._trace
 
-    def __getitem__(self, key):
-        """Get the history of a variable
+    def clear(self):
+        self._trace = []
 
-        Parameters
-        ----------
-        key: string or tuple
-            - If key is a string it should be the name of the variable to lookup.
-            - If key is a tuple it should be of the form (k,j) or (k,j,m), where
-              `k` is the name of the variable, `j` is the index of the variable,
-              and `m` is the index of the constraint.
-              If `m` is not specified then `m=0`.
-
-        Returns
-        -------
-        self.history[j][k][m]
-        """
-        if not isinstance(key, str):
-            if len(key) == 2:
-                k, j = key
-                m  = 0
-            elif len(key) == 3:
-                k, j, m = key
-        else:
-            j = m = 0
-            k = key
-        return np.array(self.history[j][k][m])
-
-    def reset(self):
-        """Reset the iteration offset
-
-        When the algorithm resets the iterations, we need to subtract the number of entries
-        in the history to enable the length counter to correctly check for the proper iteration numbers.
-        """
-        self.offset = self.__len__()
-
-    def _store_variable(self, j, key, m, value):
-        """Store a copy of the variable in the history
-        """
-        if hasattr(value, 'copy'):
-            v = value.copy()
-        else:
-            v = value
-
-        self.history[j][key][m].append(v)
-
-    def update_history(self, it, j=0, M=None, **kwargs):
-        """Add the current state for all kwargs to the history
-        """
-        # Create a new entry in the history for new variables (if they don't exist)
-        if not np.any([k in self.history[j] for k in kwargs]):
-            for k in kwargs:
-                if M is None or M == 0:
-                    self.history[j][k] = [[]]
-                else:
-                    self.history[j][k] = [[] for m in range(M)]
-        """
-        # Check that the variables have been updated once per iteration
-        elif np.any([[len(h)!=it+self.offset for h in self.history[j][k]] for k in kwargs.keys()]):
-            for k in kwargs.keys():
-                for n,h in enumerate(self.history[j][k]):
-                    if len(h) != it+self.offset:
-                        err_str = "At iteration {0}, {1}[{2}] already has {3} entries"
-                        raise Exception(err_str.format(it, k, n, len(h)-self.offset))
-        """
-        # Add the variables to the history
-        for k,v in kwargs.items():
-            if M is None or M == 0:
-                self._store_variable(j, k, 0, v)
-            else:
-                for m in range(M):
-                    self._store_variable(j, k, m, v[m])
 
 class ApproximateCache(object):
     """Cache function evaluations that don't change much
