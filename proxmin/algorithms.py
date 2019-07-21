@@ -148,6 +148,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     assert b2 >= 0 and b2 < 1
     assert eps >= 0
     assert p > 0 and p <= 0.5
+    algorithm = algorithm.lower()
     assert algorithm in ["adam", "adamx", "amsgrad", "padam"]
 
     M = [np.zeros(x.shape, x.dtype) for x in X]
@@ -408,7 +409,7 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
 
     return converged, errors
 
-# TODO !!!
+
 def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, callback=None):
     """Block-Simultaneous Method of Multipliers.
 
@@ -421,9 +422,9 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
     Args:
         X: list of initial Xs, will be updated
         proxs_f: proxed function f
-            Signature prox(X,step, j=None, Xs=None) -> X'
+            Signature prox(X,step, Xs=None, j=None) -> X'
         steps_f_cb: callback function to compute step size for proxs_f[j]
-            Signature: steps_f_cb(j, Xs) -> Reals
+            Signature: steps_f_cb(Xs, j=None) -> Reals
         proxs_g: list of proxed functions
             [[prox_X0_0, prox_X0_1...],[prox_X1_0, prox_X1_1,...],...]
         steps_g: specific value of step size for proxs_g (experts only!)
@@ -441,7 +442,8 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
         max_iter: maximum iteration number, irrespective of current residuals
-        traceback: utils.Traceback to hold variable histories
+        callback: arbitrary logging function
+            Signature: callback(*X, it=None)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
@@ -464,7 +466,8 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
     if proxs_g is None:
         proxs_g = [None] * N
     assert len(proxs_g) == N
-    assert steps_g_update.lower() in ['steps_f', 'fixed', 'relative']
+    steps_g_update = steps_g_update.lower()
+    assert steps_g_update in ['steps_f', 'fixed', 'relative']
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
@@ -480,11 +483,11 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
         #assert len(update_order) == N
         pass
 
-    if steps_g_update.lower() == 'steps_f':
+    if steps_g_update == 'steps_f':
         if steps_g is not None:
             logger.debug("Setting steps_g = None for update strategy 'steps_f'.")
             steps_g = None
-    if steps_g_update.lower() in ['fixed', 'relative']:
+    if steps_g_update in ['fixed', 'relative']:
         if steps_g is None:
             logger.debug("Ignoring steps_g update strategy '%s' because steps_g is None." % steps_g_update)
             steps_g_update = 'steps_f'
@@ -538,20 +541,20 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
     while it < max_iter:
 
         if callback is not None:
-            callback(X, it)
+            callback(*X, it=it)
 
         # iterate over blocks X_j
         for j in update_order:
             proxs_f_j = partial(proxs_f, j=j, Xs=X)
-            steps_f_j = steps_f_cb(j, X) * slack[j]
+            steps_f_j = steps_f_cb(X, j=j) * slack[j]
 
             # update steps_g relative to change of steps_f ...
-            if steps_g_update.lower() == 'relative':
+            if steps_g_update == 'relative':
                 for i in range(M[j]):
                     steps_g[j][i] *= steps_f_j / steps_f[j]
             steps_f[j] = steps_f_j
             # ... or update them as required by the most conservative limit
-            if steps_g_update.lower() == 'steps_f':
+            if steps_g_update == 'steps_f':
                 for i in range(M[j]):
                     steps_g_[j][i] = utils.get_step_g(steps_f[j], _L[j][i].spectral_norm, N=N, M=M[j])
 
@@ -562,11 +565,12 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
             converged[j], errors[j] = utils.check_constraint_convergence(X[j], _L[j], LX[j], Z[j], U[j],
                 R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
 
-        if all(converged):
-            break
         it += 1
 
-    logger.info("Completed {0} iterations".format(it+1))
+        if all(converged):
+            break
+
+    logger.info("Completed {0} iterations".format(it))
     if not all(converged):
         logger.warning("Solution did not converge")
 

@@ -12,11 +12,17 @@ def grad_likelihood(*X, Y=0, W=1):
     D = W*(A.dot(S) - Y)
     return D.dot(S.T), A.T.dot(D)
 
+def step_A(A,S):
+    return 1/utils.get_spectral_norm(S.T)
+
+def step_S(A,S):
+    return 1/utils.get_spectral_norm(A)
+
 def step(*X, it=None):
     A, S = X
-    return 1./utils.get_spectral_norm(S.T), 1./utils.get_spectral_norm(A)
+    return step_A(A,S), step_S(A,S)
 
-def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, callback=None):
+def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, update_order=None, steps_g=None, Ls=None, slack=0.9, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, callback=None):
     """Non-negative matrix factorization.
 
     This method solves the NMF problem
@@ -32,6 +38,7 @@ def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, pr
         prox_S: direct projection constraint of S
         proxs_g: list of constraints for A or S for ADMM-type optimization
             [[prox_A_0, prox_A_1...],[prox_S_0, prox_S_1,...]]
+        update_order: list of components to update in desired order.
         steps_g: specific value of step size for proxs_g (experts only!)
         Ls: list of linear operators for the constraint functions proxs_g
             If set, needs to have same format as proxs_g.
@@ -67,4 +74,15 @@ def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, pr
     if proxs_g is None or not utils.hasNotNone(proxs_g):
         return algorithms.pgm(X, grad, step, prox=prox, accelerated=True, max_iter=max_iter, e_rel=e_rel, callback=callback)
     else:
-        return algorithms.bsdmm(X, f, steps_f, proxs_g, steps_g=steps_g, Ls=Ls, update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, traceback=traceback)
+
+        # transform gradient steps into prox
+        def prox_f(X, step, Xs=None, j=None):
+            # that's a bit of a waste since we compute all gradients
+            grads = grad(*Xs)
+            # ...but only use one
+            return X - step * grads[j]
+
+        def step_f(Xs, j=None):
+            return [step_A, step_S][j](*Xs)
+
+        return algorithms.bsdmm(X, prox_f, step_f, proxs_g, steps_g=steps_g, Ls=Ls, update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, callback=callback)

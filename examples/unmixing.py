@@ -1,8 +1,8 @@
-from proxmin import nmf
-from proxmin import operators as po
+#from proxmin import nmf
+import numpy as np
+import proxmin
 from proxmin.utils import Traceback
 from scipy.optimize import linear_sum_assignment
-import numpy as np
 import matplotlib.pyplot as plt
 import time
 from functools import partial
@@ -58,13 +58,15 @@ if __name__ == "__main__":
     trueS = np.array([generateComponent(n) for i in range(k)])
     trueY = np.dot(trueA,trueS)
     Y = add_noise(trueY, noise)
+    W = 1
 
-    A = np.array([generateAmplitudes(k) for i in range(b)])
-    S = np.array([generateComponent(n) for i in range(k)])
-    p1 = partial(po.prox_unity_plus, axis=1)
-    proxs_g=[[p1], None]
+    A = np.random.rand(b,k)
+    S = np.random.rand(k,n)
+    # mixture model: amplitudes positive
+    # and sum up to one at every pixel
+    p1 = partial(proxmin.operators.prox_unity_plus, axis=1)
     traceback = Traceback()
-    nmf(Y, A, S, prox_A=p1, e_rel=1e-3, callback=traceback)
+    proxmin.nmf(Y, A, S, prox_A=p1, e_rel=1e-3, callback=traceback)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 
@@ -84,14 +86,22 @@ if __name__ == "__main__":
     fig.show()
 
     # convergence plot from traceback
-    convergences = []
+    loss = []
+    feasible = []
     for At,St in traceback.trace:
         Y = np.dot(At, St)
-        convergences.append(((Y - trueY)**2).sum())
+        loss.append(((Y - trueY)**2).sum())
+        feasible_A = np.all(At >=0 ) & np.allclose(np.sum(At, axis=1), 1)
+        feasible_S = np.all(St >=0 )
+        feasible.append((feasible_A, feasible_S))
+    print ("final loss: {}".format(loss[-1]))
+    print ("solution feasible: {}".format(feasible[-1]))
+
     fig2 = plt.figure(figsize=(6,4))
     ax4 = fig2.add_subplot(111)
-    ax4.set_title("Convergence")
-    ax4.semilogy(convergences)
+    ax4.set_title("Loss")
+    ax4.semilogy(loss)
     ax4.set_ylabel("$||Y-AS||^2$")
     ax4.set_xlabel("Iterations")
+    ax4.text(0.95, 0.95, "Loss=%.3f" % loss[-1], ha='right', va='top', transform=ax4.transAxes)
     fig2.show()
