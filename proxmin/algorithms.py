@@ -96,7 +96,7 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged, errors
+    return converged
 
 
 def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, callback=None):
@@ -223,7 +223,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged, errors
+    return converged
 
 
 def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
@@ -407,7 +407,7 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
     if not converged:
         logger.warning("Solution did not converge")
 
-    return converged, errors
+    return converged
 
 
 def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, callback=None):
@@ -574,4 +574,4 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged, errors
+    return converged
