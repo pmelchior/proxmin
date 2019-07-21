@@ -1,7 +1,6 @@
 import sys, numpy as np
+import proxmin
 from functools import partial
-from proxmin import algorithms as pa
-import proxmin.utils as utils
 
 import logging
 logging.basicConfig()
@@ -27,13 +26,9 @@ def prox_circle(X, step):
     """Projection onto circle"""
     center = np.array([0,0])
     dX = X - center
-    radius = 0.5
-    # exclude everything other than perimeter of circle
-    if 1:
-        phi = np.arctan2(dX[1], dX[0])
-        return center + radius*np.array([np.cos(phi), np.sin(phi)])
-    else:
-        return X
+    radius = 1
+    phi = np.arctan2(dX[1], dX[0])
+    return center + radius*np.array([np.cos(phi), np.sin(phi)])
 
 def prox_xline(x, step):
     """Projection onto line in x"""
@@ -116,23 +111,23 @@ if __name__ == "__main__":
 
     prox = partial(prox_lim, boundary=boundary)
     max_iter = 1000
-    traceback = utils.Traceback()
+    traceback = proxmin.utils.Traceback()
 
     # PGM without boundary
     X = X0.copy()
-    pa.pgm(X, grad_f, step_f, max_iter=max_iter, relax=1, callback=traceback)
+    proxmin.pgm(X, grad_f, step_f, max_iter=max_iter, relax=1, callback=traceback)
     plotResults(traceback.trace, "PGM no boundary")
 
     # PGM
     X = X0.copy()
     traceback.clear()
-    pa.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, callback=traceback, accelerated=False)
+    proxmin.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, callback=traceback, accelerated=False)
     plotResults(traceback.trace, "PGM", boundary=boundary)
 
     # APGM
     X = X0.copy()
     traceback.clear()
-    pa.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, accelerated=True,  callback=traceback)
+    proxmin.pgm(X, grad_f, step_f, prox=prox, max_iter=max_iter, accelerated=True,  callback=traceback)
     plotResults(traceback.trace, "PGM accelerated", boundary=boundary)
 
     # Adaptive moments methods: Adam and friends
@@ -142,20 +137,20 @@ if __name__ == "__main__":
         b1 = 0.5
         if algorithm != "adam":
             b1 = b1 ** np.arange(1, max_iter+1)
-        pa.adam(X, grad_f, step_f, prox=prox, b1=b1, b2=0.999, max_iter=max_iter, callback=traceback, algorithm=algorithm)
+        proxmin.adam(X, grad_f, step_f, prox=prox, b1=b1, b2=0.999, max_iter=max_iter, callback=traceback, algorithm=algorithm)
         plotResults(traceback.trace, algorithm.upper(), boundary=boundary)
 
     # ADMM
     X = X0.copy()
     traceback.clear()
-    pa.admm(X, prox_gradf, step_f, prox_g=prox, max_iter=max_iter, callback=traceback)
+    proxmin.admm(X, prox_gradf, step_f, prox_g=prox, max_iter=max_iter, callback=traceback)
     plotResults(traceback.trace, "ADMM", boundary=boundary)
 
     # ADMM with direct constraint projection
     prox_direct = partial(prox_gradf_lim, boundary=boundary)
     X = X0.copy()
     traceback.clear()
-    pa.admm(X, prox_direct, step_f, prox_g=None, max_iter=max_iter, callback=traceback)
+    proxmin.admm(X, prox_direct, step_f, prox_g=None, max_iter=max_iter, callback=traceback)
     plotResults(traceback.trace, "ADMM direct", boundary=boundary)
 
     # SDMM
@@ -163,5 +158,5 @@ if __name__ == "__main__":
     proxs_g = [prox] * M # using same constraint several, i.e. M, times
     X = X0.copy()
     traceback.clear()
-    pa.sdmm(X, prox_gradf, step_f, proxs_g=proxs_g, max_iter=max_iter, callback=traceback)
+    proxmin.sdmm(X, prox_gradf, step_f, proxs_g=proxs_g, max_iter=max_iter, callback=traceback)
     plotResults(traceback.trace, "SDMM", boundary=boundary)
