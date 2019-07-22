@@ -9,13 +9,13 @@ The methods in this package provide solvers for constrained optimization problem
 
 The algorithms:
 
-* **Proximal Gradient Method (PGM)**: *forward-backward* splitting with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) penalty function. Includes multi-block optimization and Nesterov acceleration.
-* **Adam and derivatives**: forward-backward splitting with gradient adaptive gradient steps for single- and multi-block optimization. Requires proximal sub-iterations.
+* **Proximal Gradient Method (PGM)**: forward-backward splitting with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) penalty function. Includes multi-block optimization and Nesterov acceleration.
+* **Adam and derivatives (AdamX, AMSGrad, PAdam)**: forward-backward splitting with adaptive gradient steps for single- and multi-block optimization.
 * **Alternating Direction Method of Multipliers (ADMM)**: Rachford-Douglas splitting for two potentially non-smooth functions. We use its linearized form to solve for additional linear mappings in the penalty functions.
 * **Simultaneous Direction Method of Multipliers (SDMM)**: Extension of linearized ADMM for several penalty functions.
 * **Block-Simultaneous Direction Method of Multipliers (bSDMM)**: Extension of SDMM to work with objective functions that are convex in several arguments. It's a proximal version of Block coordinate descent methods.
 
-Two-block PGM or bSDMM is used as the backend solvers for Non-negative Matrix Factorization (NMF). As our algorithm allows any proxable function as constraint on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
+Two-block PGM or bSDMM is used as backend solvers for Non-negative Matrix Factorization (NMF). As the algorithms allow any proxable function as constraint on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
 
 Details can be found in the [paper](https://doi.org/10.1007/s11081-018-9380-y) *"Block-Simultaneous Direction Method of Multipliers - A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
 
@@ -55,7 +55,7 @@ The gradient-based methods PGM and Adam expect two callback function: one to com
 
 The penalty functions are given as proximal mappings: `X <- prox(X, step)`. 
 
-Many proximal operators can be constructed analytically, see e.g. [Parikh & Boyd (2014)](https://web.stanford.edu/~boyd/papers/prox_algs.html). We provide a number of common ones in `proxmin.operators`. An important class of constraints are indicator functions of convex sets, for which the proximal operator, given some point **X**, returns the closes point to **X** in the Euclidean norm that is in the set. 
+Many proximal operators can be constructed analytically, see e.g. [Parikh & Boyd (2014)](https://web.stanford.edu/~boyd/papers/prox_algs.html). We provide a number of common ones in `proxmin.operators`. An important class of constraints are indicator functions of convex sets, for which the proximal operator, given some point **X**, returns the closest point to **X** in the Euclidean norm that is in the set. 
 
 **Example:** find the minimum of a shifted parabola on the unit circle in 2D
 
@@ -89,7 +89,7 @@ X = np.array([-1.,-1.]) # or whereever
 converged = proxmin.pgm(X, grad_f, step_f, prox=prox_circle)
 ```
 
-Since objective function is smooth and there is only one constraint, one can simply perform a sequence of *forward-backward* steps:  step in gradient direction, followed by a projection onto the constraint subset. That is the essence of the proximal gradient method.
+Since the objective function is smooth and there is only one constraint, one can simply perform a sequence of *forward-backward* steps: a step in gradient direction, followed by a projection onto the constraint subset. That is, in essence, the proximal gradient method.
 
 If the first function is not smooth, one can use ADMM. It allows for two functions (the objective and one penalty) to be satisfied, but it treats them *separately*. Unlike PGM, the constraint is only met at the end of the optimization and only within some error tolerance.
 
@@ -112,18 +112,17 @@ We have extended the capabilities substantially by allowing for an arbitrary num
 For a solver, you can simply do this:
 
 ```python
-from proxmin import nmf
 # PGM-like approach for each factor
 prox_A = ... # a single constraint on A, solved by projection
 prox_S = ... # a single constraint on S, solved by projection
 A0, S0 = ... # initialization
-A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
+A, S = proxmin.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
 # for multiple constraints, solved by ADMM-style split
 proxs_g = [[...], # list of proxs for A
            [...]] # list of proxs for S
-A, S = nmf(Y, A0, S0, proxs_g=proxs_g)
+A, S = proxmin.nmf(Y, A0, S0, proxs_g=proxs_g)
 # or a combination
-A, S = nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
+A, S = proxmin.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
 ```
 
 A complete and practical example is given in [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.
