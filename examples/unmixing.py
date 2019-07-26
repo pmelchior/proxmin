@@ -45,28 +45,8 @@ def match(A, S, trueS):
         resAT[arrangement[1][t]] = A.T[arrangement[0][t]]
     return resAT.T, resS
 
+def plotResults(trace, Y, A, S, trueS, trueA):
 
-if __name__ == "__main__":
-    n = 50 			# component resolution
-    k = 3 			# number of components
-    b = 100			# number of observations
-    noise = 0.02    # stdev of added noise
-    np.random.seed(101)
-
-    # set up test data
-    trueA = np.array([generateAmplitudes(k) for i in range(b)])
-    trueS = np.array([generateComponent(n) for i in range(k)])
-    trueY = np.dot(trueA,trueS)
-    Y = add_noise(trueY, noise)
-    W = 1
-
-    A = np.random.rand(b,k)
-    S = np.random.rand(k,n)
-    # mixture model: amplitudes positive
-    # and sum up to one at every pixel
-    p1 = partial(proxmin.operators.prox_unity_plus, axis=1)
-    traceback = Traceback()
-    proxmin.nmf(Y, A, S, prox_A=p1, e_rel=1e-3, callback=traceback)
     # sort components to best match inputs
     A, S = match(A, S, trueS)
 
@@ -88,9 +68,10 @@ if __name__ == "__main__":
     # convergence plot from traceback
     loss = []
     feasible = []
+    trueY = np.dot(trueA, trueS)
     for At,St in traceback.trace:
-        Y = np.dot(At, St)
-        loss.append(((Y - trueY)**2).sum())
+        Yt = np.dot(At, St)
+        loss.append(((Yt - trueY)**2).sum())
         feasible_A = np.all(At >=0 ) & np.allclose(np.sum(At, axis=1), 1)
         feasible_S = np.all(St >=0 )
         feasible.append((feasible_A, feasible_S))
@@ -105,3 +86,27 @@ if __name__ == "__main__":
     ax4.set_xlabel("Iterations")
     ax4.text(0.95, 0.95, "Loss=%.3f" % loss[-1], ha='right', va='top', transform=ax4.transAxes)
     fig2.show()
+
+
+if __name__ == "__main__":
+    n = 50 			# component resolution
+    k = 3 			# number of components
+    b = 100			# number of observations
+    noise = 0.02    # stdev of added noise
+    np.random.seed(101)
+
+    # set up test data
+    trueA = np.array([generateAmplitudes(k) for i in range(b)])
+    trueS = np.array([generateComponent(n) for i in range(k)])
+    Y = add_noise(np.dot(trueA,trueS), noise)
+
+    # mixture model: amplitudes positive
+    # and sum up to one at every pixel
+    pA = partial(proxmin.operators.prox_unity_plus, axis=1)
+    pS = proxmin.operators.prox_plus
+
+    A = np.random.rand(b,k)
+    S = np.random.rand(k,n)
+    traceback = Traceback()
+    proxmin.nmf.nmf(Y, A, S, prox_A=pA, prox_S=pS, e_rel=1e-3, callback=traceback)
+    plotResults(traceback, Y, A, S, trueS, trueA)

@@ -47,7 +47,7 @@ pip install proxmin
 
  For the latest development version, clone this repository and execute `python setup.py install`.
 
-The code works on python>2.7 and requires numpy and scipy.
+The code works on python>2.7 and requires numpy and scipy. It is fully compatible with gradient computation by `autograd`.
 
 ## Approach
 
@@ -91,7 +91,7 @@ converged = proxmin.pgm(X, grad_f, step_f, prox=prox_circle)
 
 Since the objective function is smooth and there is only one constraint, one can simply perform a sequence of *forward-backward* steps: a step in gradient direction, followed by a projection onto the constraint subset. That is, in essence, the proximal gradient method.
 
-If the first function is not smooth, one can use ADMM. It allows for two functions (the objective and one penalty) to be satisfied, but it treats them *separately*. Unlike PGM, the constraint is only met at the end of the optimization and only within some error tolerance.
+If both functions are not smooth, one can use ADMM. It therefore operates on two proxed functions. Unlike PGM, feasibility is only achieved at the end of the optimization and only within some error tolerance.
 
 Continuing the example above, the smooth function gets turned into a proxed function by performing the gradient step internally and returning the updated position:
 
@@ -107,22 +107,20 @@ convergence = proxmin.admm(X, prox_gradf, step_f, prox_g=prox_circle, e_rel=1e-3
 
 Matrix factorization seeks to approximate a target matrix `Y` as a product of `np.dot(A,S)`. If those constraints are only non-negativity, the method is known as NMF.
 
-We have extended the capabilities substantially by allowing for an arbitrary number of constraints to be enforced. As above, the constraints and the objective function will be accessed through their proximal operators only.
-
-For a solver, you can simply do this:
+We have extended the capabilities substantially by allowing for an arbitrary number of constraints to be enforced on either matrix factor:
 
 ```python
 # PGM-like approach for each factor
 prox_A = ... # a single constraint on A, solved by projection
 prox_S = ... # a single constraint on S, solved by projection
 A0, S0 = ... # initialization
-A, S = proxmin.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
+A, S = proxmin.nmf.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
 # for multiple constraints, solved by ADMM-style split
 proxs_g = [[...], # list of proxs for A
            [...]] # list of proxs for S
-A, S = proxmin.nmf(Y, A0, S0, proxs_g=proxs_g)
+A, S = proxmin.nmf.nmf(Y, A0, S0, proxs_g=proxs_g)
 # or a combination
-A, S = proxmin.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
+A, S = proxmin.nmf.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
 ```
 
 A complete and practical example is given in [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.

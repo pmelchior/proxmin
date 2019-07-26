@@ -22,7 +22,7 @@ def step(*X, it=None):
     A, S = X
     return step_A(A,S), step_S(A,S)
 
-def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, update_order=None, steps_g=None, Ls=None, slack=0.9, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, callback=None):
+def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, callback=None):
     """Non-negative matrix factorization.
 
     This method solves the NMF problem
@@ -45,8 +45,6 @@ def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, pr
             Matrices can be numpy.array, scipy.sparse, or None (for identity).
         slack: tolerance for (re)evaluation of Lipschitz constants
             See Steps_AS() for details.
-        update_order: list of factor indices in update order
-            j=0 -> A, j=1 -> S
         max_iter: maximum iteration number, irrespective of current residuals
         e_rel: relative error threshold for primal and dual residuals
         e_abs: absolute error threshold for primal and dual residuals
@@ -73,16 +71,16 @@ def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, pr
     # use accelerated block-PGM if there's no proxs_g
     if proxs_g is None or not utils.hasNotNone(proxs_g):
         return algorithms.pgm(X, grad, step, prox=prox, accelerated=True, max_iter=max_iter, e_rel=e_rel, callback=callback)
-    else:
 
+    else:
         # transform gradient steps into prox
         def prox_f(X, step, Xs=None, j=None):
             # that's a bit of a waste since we compute all gradients
             grads = grad(*Xs)
             # ...but only use one
-            return X - step * grads[j]
+            return prox[j](X - step * grads[j])
 
         def step_f(Xs, j=None):
             return [step_A, step_S][j](*Xs)
 
-        return algorithms.bsdmm(X, prox_f, step_f, proxs_g, steps_g=steps_g, Ls=Ls, update_order=update_order, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, callback=callback)
+        return algorithms.bsdmm(X, prox_f, step_f, proxs_g, steps_g=steps_g, Ls=Ls, steps_g_update=steps_g_update, max_iter=max_iter, e_rel=e_rel, e_abs=e_abs, callback=callback)
