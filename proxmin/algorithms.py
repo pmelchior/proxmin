@@ -154,6 +154,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
     Vhat = [np.zeros(x.shape, x.dtype) for x in X]
+    H = [np.zeros(x.shape, x.dtype) for x in X]
 
     for it in range(max_iter):
 
@@ -162,45 +163,43 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
 
         X_ = _copy_tuple(X)
         G = _as_tuple(grad(*X))
-        S = _as_tuple(step(*X, it=it))
+        Alpha = _as_tuple(step(*X, it=it))
 
         for j in range(N):
             M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
             V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
 
             if algorithm == "adam":
-                # decay terms folded into Vhat
-                Vhat[j] = V[j] / (1 - b2**(it + 1)) * (1 - b1[it]**(it+1))**2
+                phi = M[j] / (1 - b1[it]**(it+1))**2
+                Vhat[j] = V[j] / (1 - b2**(it + 1))
             else:
+                phi = M[j]
+
                 # maximum propagation of Vhat
                 factor = 1
                 if it > 0 and algorithm == "adamx":
                     factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
-                Vhat[j] = np.maximum(V[j], factor * Vhat[j])
+                Vhat[j] = np.maximum(factor * Vhat[j], V[j])
 
             if algorithm == "padam":
-                denom = Vhat[j]**p
+                psi = Vhat[j]**p
             else:
-                denom = np.sqrt(Vhat[j])
+                psi = np.sqrt(Vhat[j])
+                if algorithm == "adam":
+                    psi += eps
 
-            if algorithm == "adam":
-                denom += eps
-
-            X[j][:] -= S[j] * M[j] / denom
+            X[j][:] -= Alpha[j] * phi / psi
+            H[j] = psi
 
 
         if has_prox:
             Z = _copy_tuple(X)
-            if algorithm == "padam":
-                h = tuple(Vhat[j]**p for j in range(N))
-            else:
-                h = tuple(np.sqrt(Vhat[j]) for j in range(N))
-            gamma = tuple(1 / np.max(h[j]**2) for j in range(N))
+            gamma = tuple(Alpha[j] / np.max(H[j]**2) for j in range(N))
 
             # proximal projection with metric h
             for j in range(N):
                 for prox_it in range(max_iter):
-                    Z_ = prox[j](Z[j] - gamma[j] * h[j] * (Z[j] - X[j]), gamma)
+                    Z_ = prox[j](Z[j] - gamma[j] * H[j] * (Z[j] - X[j]), gamma)
 
                     converged = utils.l2sq(Z_ - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j])
                     Z[j][:] = Z_

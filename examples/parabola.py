@@ -26,7 +26,7 @@ def prox_circle(X, step):
     """Projection onto circle"""
     center = np.array([0,0])
     dX = X - center
-    radius = 1
+    radius = 0.5
     phi = np.arctan2(dX[1], dX[0])
     return center + radius*np.array([np.cos(phi), np.sin(phi)])
 
