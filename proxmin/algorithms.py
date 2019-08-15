@@ -154,7 +154,8 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
     Vhat = [np.zeros(x.shape, x.dtype) for x in X]
-    H = [np.zeros(x.shape, x.dtype) for x in X]
+    Phi = [np.zeros(x.shape, x.dtype) for x in X]
+    Psi = [np.zeros(x.shape, x.dtype) for x in X]
 
     for it in range(max_iter):
 
@@ -170,10 +171,10 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
             V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
 
             if algorithm == "adam":
-                phi = M[j] / (1 - b1[it]**(it+1))**2
-                Vhat[j] = V[j] / (1 - b2**(it + 1))
+                Phi[j] = M[j] / (1 - b1[it]**(it+1))
+                Vhat[j] = V[j] / (1 - b2**(it+1))
             else:
-                phi = M[j]
+                Phi[j] = M[j]
 
                 # maximum propagation of Vhat
                 factor = 1
@@ -182,24 +183,23 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
                 Vhat[j] = np.maximum(factor * Vhat[j], V[j])
 
             if algorithm == "padam":
-                psi = Vhat[j]**p
+                Psi[j] = Vhat[j]**p
             else:
-                psi = np.sqrt(Vhat[j])
+                Psi[j] = np.sqrt(Vhat[j])
                 if algorithm == "adam":
-                    psi += eps
+                    Psi[j] += eps
+            Psi[j] = np.ones_like(X[j])
 
-            X[j][:] -= Alpha[j] * phi / psi
-            H[j] = psi
-
+            X[j][:] -= Alpha[j] * Phi[j] / Psi[j]
 
         if has_prox:
             Z = _copy_tuple(X)
-            gamma = tuple(Alpha[j] / np.max(H[j]**2) for j in range(N))
+            Gamma = tuple(Alpha[j] / np.max(Psi[j]**2) for j in range(N))
 
             # proximal projection with metric h
             for j in range(N):
                 for prox_it in range(max_iter):
-                    Z_ = prox[j](Z[j] - gamma[j] * H[j] * (Z[j] - X[j]), gamma)
+                    Z_ = prox[j](Z[j] - Gamma[j]/Alpha[j] * Psi[j] * (Z[j] - X[j]), Gamma[j])
 
                     converged = utils.l2sq(Z_ - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j])
                     Z[j][:] = Z_
