@@ -171,13 +171,17 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         G = _as_tuple(grad(*X))
         Alpha = _as_tuple(step(*X, it=it))
 
+        t = it + 1
+        b1t = b1[it]**t
+        b2t = b2**t
+
         for j in range(N):
             M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
             V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
 
             if algorithm in ["adam", "radam"]:
-                Phi[j] = M[j] / (1 - b1[it]**(it+1))
-                Vhat[j] = V[j] / (1 - b2**(it+1))
+                Phi[j] = M[j] / (1 - b1t)
+                Vhat[j] = V[j] / (1 - b2t)
             else:
                 Phi[j] = M[j]
 
@@ -194,8 +198,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
                 if algorithm == "adam":
                     Psi[j] += eps
                 if algorithm == "radam":
-                    t = it + 1
-                    rho = rho_inf - 2*t*b2**t / (1 - b2**t)
+                    rho = rho_inf - 2*t*b2t / (1 - b2t)
                     if rho > 4:
                         r = np.sqrt((rho-4) * (rho-2) * rho_inf / (rho_inf-4) / (rho_inf-2) / rho)
                         Psi[j] /= r
@@ -209,7 +212,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
                 z = X[j].copy()
                 gamma = Alpha[j] / np.max(Psi[j]**2)
 
-                for prox_it in range(max_iter):
+                for tau in range(1, max_iter + 1):
                     z_ = prox[j](z - gamma / Alpha[j] * Psi[j] * (z - X[j]), gamma)
 
                     converged = utils.l2sq(z_ - z) <= e_rel[j]**2*utils.l2sq(z)
@@ -218,8 +221,8 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
                     if converged:
                         break
 
-                logger.debug("Proximal sub-iterations for variable {}: {}".format(j, prox_it+1))
-                Sub_iter[j] += prox_it + 1
+                logger.debug("Proximal sub-iterations for variable {}: {}".format(j, tau))
+                Sub_iter[j] += tau
 
                 X[j][:] = z
 
@@ -230,7 +233,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         if all(converged):
             break
 
-    logger.info("Completed {0} iterations and {1} sub-iterations".format(it+1, Sub_iter))
+    logger.info("Completed {0} iterations and {1} sub-iterations".format(t, Sub_iter))
     if not all(converged):
         logger.warning("Solution did not converge")
 
