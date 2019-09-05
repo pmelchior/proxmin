@@ -43,13 +43,15 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     """
     # Set up: turn X and prox into tuples
     X = _as_tuple(X)
-    prox = _as_tuple(prox)
-
     N = len(X)
+    prox = _as_tuple(prox)
+    if len(prox) == 1:
+        prox = prox * N
+    assert len(prox) == len(X)
+
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
 
-    assert len(prox) == len(X)
     assert len(e_rel) == len(X)
 
     if relax is not None:
@@ -132,8 +134,9 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     """
     X = _as_tuple(X)
     N = len(X)
-    has_prox = prox is not None
     prox = _as_tuple(prox)
+    if len(prox) == 1:
+        prox = prox * N
     assert len(prox) == len(X)
 
     if np.isscalar(e_rel):
@@ -192,10 +195,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
 
             X[j][:] -= Alpha[j] * Phi[j] / Psi[j]
 
-        if has_prox:
-
-            # proximal projection with metric h
-            for j in range(N):
+            if prox[j] is not None:
 
                 z = X[j].copy()
                 gamma = Alpha[j] / np.max(Psi[j]**2)

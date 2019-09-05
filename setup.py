@@ -15,7 +15,7 @@ setup(
     long_description_content_type='text/markdown',
     packages = packages,
     include_package_data=False,
-    version = '0.6.1',
+    version = '0.6.2',
     license='MIT',
     author = 'Peter Melchior, Fred Moolekamp',
     author_email = 'peter.m.melchior@gmail.com',
