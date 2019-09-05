@@ -156,6 +156,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     Vhat = [np.zeros(x.shape, x.dtype) for x in X]
     Phi = [np.zeros(x.shape, x.dtype) for x in X]
     Psi = [np.zeros(x.shape, x.dtype) for x in X]
+    Sub_iter = [0,] * N
 
     for it in range(max_iter):
 
@@ -188,28 +189,30 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
                 Psi[j] = np.sqrt(Vhat[j])
                 if algorithm == "adam":
                     Psi[j] += eps
-            Psi[j] = np.ones_like(X[j])
 
             X[j][:] -= Alpha[j] * Phi[j] / Psi[j]
 
         if has_prox:
-            Z = _copy_tuple(X)
-            Gamma = tuple(Alpha[j] / np.max(Psi[j]**2) for j in range(N))
 
             # proximal projection with metric h
             for j in range(N):
-                for prox_it in range(max_iter):
-                    Z_ = prox[j](Z[j] - Gamma[j]/Alpha[j] * Psi[j] * (Z[j] - X[j]), Gamma[j])
 
-                    converged = utils.l2sq(Z_ - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j])
-                    Z[j][:] = Z_
+                z = X[j].copy()
+                gamma = Alpha[j] / np.max(Psi[j]**2)
+
+                for prox_it in range(max_iter):
+                    z_ = prox[j](z - gamma / Alpha[j] * Psi[j] * (z - X[j]), gamma)
+
+                    converged = utils.l2sq(z_ - z) <= e_rel[j]**2*utils.l2sq(z)
+                    z = z_
 
                     if converged:
                         break
 
                 logger.debug("Proximal sub-iterations for variable {}: {}".format(j, prox_it+1))
+                Sub_iter[j] += prox_it + 1
 
-                X[j][:] = Z[j]
+                X[j][:] = z
 
         # test for fixed point convergence
         errors = tuple(X[j] - X_[j] for j in range(N))
@@ -218,7 +221,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         if all(converged):
             break
 
-    logger.info("Completed {0} iterations".format(it+1))
+    logger.info("Completed {0} iterations and {1} sub-iterations".format(it+1, Sub_iter))
     if not all(converged):
         logger.warning("Solution did not converge")
 
