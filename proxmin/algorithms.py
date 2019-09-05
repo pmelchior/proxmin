@@ -152,7 +152,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     assert eps >= 0
     assert p > 0 and p <= 0.5
     algorithm = algorithm.lower()
-    assert algorithm in ["adam", "adamx", "amsgrad", "padam"]
+    assert algorithm in ["adam", "adamx", "amsgrad", "padam", "radam"]
 
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
@@ -160,6 +160,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     Phi = [np.zeros(x.shape, x.dtype) for x in X]
     Psi = [np.zeros(x.shape, x.dtype) for x in X]
     Sub_iter = [0,] * N
+    rho_inf = 2 / (1 - b2) - 1 # for RAdam
 
     for it in range(max_iter):
 
@@ -174,7 +175,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
             M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
             V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
 
-            if algorithm == "adam":
+            if algorithm in ["adam", "radam"]:
                 Phi[j] = M[j] / (1 - b1[it]**(it+1))
                 Vhat[j] = V[j] / (1 - b2**(it+1))
             else:
@@ -192,6 +193,14 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
                 Psi[j] = np.sqrt(Vhat[j])
                 if algorithm == "adam":
                     Psi[j] += eps
+                if algorithm == "radam":
+                    t = it + 1
+                    rho = rho_inf - 2*t*b2**t / (1 - b2**t)
+                    if rho > 4:
+                        r = np.sqrt((rho-4) * (rho-2) * rho_inf / (rho_inf-4) / (rho_inf-2) / rho)
+                        Psi[j] /= r
+                    else:
+                        Psi[j][:] = 1
 
             X[j][:] -= Alpha[j] * Phi[j] / Psi[j]
 
