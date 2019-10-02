@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 import numpy as np
+import scipy.sparse, scipy.sparse.linalg
 from . import operators
 from . import utils
 from . import algorithms
@@ -18,9 +19,28 @@ def step_A(A,S):
 def step_S(A,S):
     return 1/utils.get_spectral_norm(A)
 
-def step(*X, it=None):
+def step(*X, it=None, W=1):
     A, S = X
-    return step_A(A,S), step_S(A,S)
+    if W is 1:
+        return step_A(A,S), step_S(A,S)
+    else:
+        C, K = A.shape
+        K, N = S.shape
+        Sigma_1 = scipy.sparse.diags(W.flatten())
+
+        # Lipschitz constant for grad_A = || S Sigma_1 S.T||_s
+        PS = scipy.sparse.block_diag([S.T for c in range(C)])
+        SSigma_1S = PS.T.dot(Sigma_1.dot(PS))
+        LA = np.real(scipy.sparse.linalg.eigs(SSigma_1S, k=1, return_eigenvectors=False)[0])
+
+        # Lipschitz constant for grad_S = || A.T Sigma_1 A||_s
+        PA = scipy.sparse.bmat([[scipy.sparse.identity(N) * A[c,k] for k in range(K)] for c in range(C)])
+        ASigma_1A = PA.T.dot(Sigma_1.dot(PA))
+        LS = np.real(scipy.sparse.linalg.eigs(ASigma_1A, k=1, return_eigenvectors=False)[0])
+        LA, LS
+
+        return 1/LA, 1/LS
+
 
 def nmf(Y, A, S, W=1, prox_A=operators.prox_plus, prox_S=operators.prox_plus, proxs_g=None, steps_g=None, Ls=None, slack=0.9, steps_g_update='steps_f', max_iter=1000, e_rel=1e-3, e_abs=0, callback=None):
     """Non-negative matrix factorization.
