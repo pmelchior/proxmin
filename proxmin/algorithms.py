@@ -89,8 +89,7 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
                 X[j][:] += (relax-1)*(X[j] - X_[j])
 
         # test for fixed point convergence
-        errors = tuple(X[j] - X_[j] for j in range(N))
-        converged = tuple(utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+        converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
         if all(converged):
             break
 
@@ -98,16 +97,17 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged
+    return converged, G, S
 
 
-def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, callback=None):
+def adam(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
     """Proximal Adam and variants
 
     Adam (Kingma & Ba 2015)
     AMSGrad (Reddi, Kale & Kumar 2018)
     PAdam (Chen & Gu 2018)
     AdamX (Phuong & Phong 2019)
+    RAdam (Liu et al. 2019)
 
     Uses sub-iterations to satisfy penalty.
 
@@ -118,13 +118,15 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
             Should be smaller than 2/L with L the Lipschitz constant of grad
             Signature: step(*X, it=None) -> float
         prox: proximal operator of penalty function
-        algorithm: one of ["adam", "adamx", "amsgrad", "padam"]
+        algorithm: one of ["adam", "adamx", "amsgrad", "padam","radam"]
+        bias_correction: if the moving averages are bias corrected
         b1: (float or array) first moment momentum decay
         b2: second moment momentum decay
         eps: softening of second moment (only for algorithm == "adam")
-        p: power of econd moment (only for algorithm == "padam")
+        p: power of second moment (only for algorithm == "padam")
         e_rel: relative error of X
         max_iter: maximum iteration, irrespective of residual error
+        prox_max_iter: maximum proximal sub-iteration error
         callback: arbitrary logging function
             Signature: callback(*X, it=None)
 
@@ -156,9 +158,9 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
 
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
-    Vhat = [np.zeros(x.shape, x.dtype) for x in X]
-    Phi = [np.zeros(x.shape, x.dtype) for x in X]
-    Psi = [np.zeros(x.shape, x.dtype) for x in X]
+    Vhat = [None,] * N
+    Phi = [None,] * N
+    Psi = [None,] * N
     Sub_iter = [0,] * N
     rho_inf = 2 / (1 - b2) - 1 # for RAdam
 
@@ -176,21 +178,29 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
         b2t = b2**t
 
         for j in range(N):
+            # moving averages
             M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
             V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
 
-            if algorithm in ["adam", "radam"]:
+            # bias correction
+            if bias_correction:
                 Phi[j] = M[j] / (1 - b1t)
-                Vhat[j] = V[j] / (1 - b2t)
+                _vhat = V[j] / (1 - b2t)
             else:
                 Phi[j] = M[j]
+                _vhat = V[j]
 
+            # Vhat
+            if it == 0 or algorithm in ['adam', 'radam']:
+                Vhat[j] = _vhat
+            else:
                 # maximum propagation of Vhat
                 factor = 1
-                if it > 0 and algorithm == "adamx":
+                if algorithm == "adamx":
                     factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
-                Vhat[j] = np.maximum(factor * Vhat[j], V[j])
+                Vhat[j] = np.maximum(factor * Vhat[j], _vhat)
 
+            # Psi
             if algorithm == "padam":
                 Psi[j] = Vhat[j]**p
             else:
@@ -209,13 +219,19 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
 
             if prox[j] is not None:
 
-                z = X[j].copy()
-                gamma = Alpha[j] / np.max(Psi[j]**2)
+                # if prox_max_iter <= 1:
+                #     alpha_ = Alpha[j] / Psi[j]
+                #     X[j][:] = prox[j](X[j], alpha_)
+                # else:
 
-                for tau in range(1, max_iter + 1):
+                # proximal subiterations to solve for optimality
+                z = X[j].copy()
+                gamma = Alpha[j] / np.max(Psi[j])
+
+                for tau in range(1, prox_max_iter + 1):
                     z_ = prox[j](z - gamma / Alpha[j] * Psi[j] * (z - X[j]), gamma)
 
-                    converged = utils.l2sq(z_ - z) <= e_rel[j]**2*utils.l2sq(z)
+                    converged = utils.l2sq(z_ - z) <= e_rel[j]**2 * utils.l2sq(z)
                     z = z_
 
                     if converged:
@@ -227,8 +243,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
                 X[j][:] = z
 
         # test for fixed point convergence
-        errors = tuple(X[j] - X_[j] for j in range(N))
-        converged = tuple(utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+        converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
 
         if all(converged):
             break
@@ -237,7 +252,7 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged
+    return converged, Phi, Psi
 
 
 def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
