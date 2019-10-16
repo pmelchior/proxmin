@@ -4,7 +4,7 @@ import proxmin
 from proxmin.utils import Traceback
 from scipy.optimize import linear_sum_assignment
 import matplotlib.pyplot as plt
-import time
+import time, sys
 from functools import partial
 
 # initialize and run NMF
@@ -45,50 +45,50 @@ def match(A, S, trueS):
         resAT[arrangement[1][t]] = A.T[arrangement[0][t]]
     return resAT.T, resS
 
-def plotResults(trace, Y, A, S, trueS, trueA):
 
-    # sort components to best match inputs
-    A, S = match(A, S, trueS)
+def plotData(trueS, Y, S):
 
     # show data and model
-    fig = plt.figure(figsize=(6,7))
-    ax = fig.add_subplot(311)
-    ax.set_title("True Components S")
-    ax.plot(trueS.T)
-    ax2 = fig.add_subplot(312)
-    ax2.set_title("Data Y")
-    ax2.plot(Y.T)
-    ax3 = fig.add_subplot(313)
-    ax3.set_title("Found Components S")
-    ax3.set_xlabel("Pixel")
-    ax3.plot(S.T)
-    fig.subplots_adjust(bottom=0.07, top=0.95, hspace=0.35)
+    fig, axs = plt.subplots(1,3, sharey=True)
+    axs[0].plot(trueS.T)
+    axs[1].plot(Y.T, c='k', alpha=0.15)
+    axs[2].plot(S.T)
+    axs[0].set_xlabel("Feature")
+    axs[1].set_xlabel("Feature")
+    axs[2].set_xlabel("Feature")
+    axs[0].text(0.03, 0.97, "True S", ha='left', va='top', transform=axs[0].transAxes)
+    axs[1].text(0.03, 0.97, "Y", ha='left', va='top', transform=axs[1].transAxes)
+    axs[2].text(0.03, 0.97, "Best-fit S", ha='left', va='top', transform=axs[2].transAxes)
+    axs[0].set_ylim(top=1.1)
+    axs[1].set_ylim(top=1.1)
+    axs[2].set_ylim(top=1.1)
+    fig.subplots_adjust(wspace=0)
+    fig.tight_layout()
     fig.show()
+
+def plotLoss(trace, Y, ax=None, label=None):
 
     # convergence plot from traceback
     loss = []
     feasible = []
-    trueY = np.dot(trueA, trueS)
     for At,St in traceback.trace:
-        Yt = np.dot(At, St)
-        loss.append(((Yt - trueY)**2).sum())
-        feasible_A = np.all(At >=0 ) & np.allclose(np.sum(At, axis=1), 1)
-        feasible_S = np.all(St >=0 )
-        feasible.append((feasible_A, feasible_S))
-    print ("final loss: {}".format(loss[-1]))
-    print ("solution feasible: {}".format(feasible[-1]))
+        loss.append(proxmin.nmf.log_likelihood(At, St, Y=Y))
 
-    fig2 = plt.figure(figsize=(6,4))
-    ax4 = fig2.add_subplot(111)
-    ax4.set_title("Loss")
-    ax4.semilogy(loss)
-    ax4.set_ylabel("$||Y-AS||^2$")
-    ax4.set_xlabel("Iterations")
-    ax4.text(0.95, 0.95, "Loss=%.3f" % loss[-1], ha='right', va='top', transform=ax4.transAxes)
-    fig2.show()
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+    ax.semilogy(loss, label=label)
 
 
 if __name__ == "__main__":
+
+    if len(sys.argv)==2:
+        problem = sys.argv[1]
+        if problem not in ["nmf", "mixmf"]:
+            raise ValueError("Expected either 'nmf' or 'mixmf' as an argument")
+    else:
+        problem = "mixmf"
+
     n = 50 			# component resolution
     k = 3 			# number of components
     b = 100			# number of observations
@@ -100,13 +100,58 @@ if __name__ == "__main__":
     trueS = np.array([generateComponent(n) for i in range(k)])
     Y = add_noise(np.dot(trueA,trueS), noise)
 
+    A0 = np.random.rand(b,k)
+    A0 /= A0.sum(axis=1)[:,None]
+    S0 = np.random.rand(k,n)
+
     # mixture model: amplitudes positive
     # and sum up to one at every pixel
     pA = partial(proxmin.operators.prox_unity_plus, axis=1)
     pS = proxmin.operators.prox_plus
 
-    A = np.random.rand(b,k)
-    S = np.random.rand(k,n)
+    if problem == "nmf":
+        prox = [pS, pS]
+    elif problem == "mixmf":
+        prox = [pA, pS]
+
+    grad = partial(proxmin.nmf.grad_likelihood, Y=Y)
+
     traceback = Traceback()
-    proxmin.nmf.nmf(Y, A, S, prox_A=pA, prox_S=pS, e_rel=1e-3, callback=traceback)
-    plotResults(traceback, Y, A, S, trueS, trueA)
+    all_args = {'prox': prox, 'max_iter': 1000, 'callback': traceback, 'e_rel': 1e-4}
+    b1 = 0.9
+    b2 = 0.999
+    adaprox_args = {'b1': b1, 'b2': b2, 'prox_max_iter': 100}
+    runs = (
+        (proxmin.pgm, all_args, 'PGM'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, algorithm="adam", bias_correction=True), 'Adam'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, algorithm="padam", p=0.125, bias_correction=False), 'PAdam'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, algorithm="amsgrad", bias_correction=False), 'AMSGrad'),
+    )
+
+    best_AS = None
+    best_loss = np.inf
+
+    for i,alpha in enumerate([0.01, 0.1]):
+        step = {
+            proxmin.pgm: proxmin.nmf.step,
+            proxmin.adaprox: lambda *X, it: (alpha, alpha)
+        }
+
+        for alg, kwargs, label in runs:
+            A = A0.copy()
+            S = S0.copy()
+            traceback.clear()
+            try:
+                c, G, V = alg((A,S), grad, step[alg], **kwargs)
+                loss = proxmin.nmf.log_likelihood(A, S, Y=Y)
+                print ("{}: final loss = {}\n".format(label, loss))
+
+                if loss < best_loss:
+                    best_loss = loss
+                    best_AS = (A.copy(), S.copy())
+
+            except np.linalg.LinAlgError:
+                pass
+
+    A, S = match(*best_AS, trueS)
+    plotData(trueS, Y, S)
