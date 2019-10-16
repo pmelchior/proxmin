@@ -100,16 +100,18 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     return converged, G, S
 
 
-def adam(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
-    """Proximal Adam and variants
+def adaprox(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
+    """Adaptive Proximal Gradient Method
 
-    Adam (Kingma & Ba 2015)
-    AMSGrad (Reddi, Kale & Kumar 2018)
-    PAdam (Chen & Gu 2018)
-    AdamX (Phuong & Phong 2019)
-    RAdam (Liu et al. 2019)
+    Uses multiple variants of adaptive quasi-Newton gradient descent
 
-    Uses sub-iterations to satisfy penalty.
+        * Adam (Kingma & Ba 2015)
+        * AMSGrad (Reddi, Kale & Kumar 2018)
+        * PAdam (Chen & Gu 2018)
+        * AdamX (Phuong & Phong 2019)
+        * RAdam (Liu et al. 2019)
+
+    and PGM sub-iterations to satisfy feasibility and optimality.
 
     Args:
         X: initial X, will be updated

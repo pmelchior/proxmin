@@ -8,6 +8,10 @@ from . import algorithms
 import logging
 logger = logging.getLogger("proxmin")
 
+def log_likelihood(*X, Y=0, W=1):
+    A, S = X
+    return np.sum(W*(Y - A.dot(S))**2) / 2
+
 def grad_likelihood(*X, Y=0, W=1):
     A, S = X
     D = W*(A.dot(S) - Y)
