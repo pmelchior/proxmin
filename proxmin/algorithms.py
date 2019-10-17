@@ -39,17 +39,20 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
 
     Returns:
         converged: whether the optimizer has converged within e_rel
-        error: X^it - X^it-1
+        gradient: last iteration gradients
+        step: last iteration steps
     """
     # Set up: turn X and prox into tuples
     X = _as_tuple(X)
-    prox = _as_tuple(prox)
-
     N = len(X)
+    prox = _as_tuple(prox)
+    if len(prox) == 1:
+        prox = prox * N
+    assert len(prox) == len(X)
+
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
 
-    assert len(prox) == len(X)
     assert len(e_rel) == len(X)
 
     if relax is not None:
@@ -87,8 +90,7 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
                 X[j][:] += (relax-1)*(X[j] - X_[j])
 
         # test for fixed point convergence
-        errors = tuple(X[j] - X_[j] for j in range(N))
-        converged = tuple(utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+        converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
         if all(converged):
             break
 
@@ -96,18 +98,21 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged
+    return converged, G, S
 
 
-def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, callback=None):
-    """Proximal Adam and variants
+def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
+    """Adaptive Proximal Gradient Method
 
-    Adam (Kingma & Ba 2015)
-    AMSGrad (Reddi, Kale & Kumar 2018)
-    PAdam (Chen & Gu 2018)
-    AdamX (Phuong & Phong 2019)
+    Uses multiple variants of adaptive quasi-Newton gradient descent
 
-    Uses sub-iterations to satisfy penalty.
+        * Adam (Kingma & Ba 2015)
+        * AMSGrad (Reddi, Kale & Kumar 2018)
+        * PAdam (Chen & Gu 2018)
+        * AdamX (Phuong & Phong 2019)
+        * RAdam (Liu et al. 2019)
+
+    and PGM sub-iterations to satisfy feasibility and optimality.
 
     Args:
         X: initial X, will be updated
@@ -116,24 +121,28 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
             Should be smaller than 2/L with L the Lipschitz constant of grad
             Signature: step(*X, it=None) -> float
         prox: proximal operator of penalty function
-        algorithm: one of ["adam", "adamx", "amsgrad", "padam"]
+        scheme: one of ["adam", "adamx", "amsgrad", "padam","radam"]
+        bias_correction: if the moving averages are bias corrected
         b1: (float or array) first moment momentum decay
         b2: second moment momentum decay
         eps: softening of second moment (only for algorithm == "adam")
-        p: power of econd moment (only for algorithm == "padam")
+        p: power of second moment (only for algorithm == "padam")
         e_rel: relative error of X
         max_iter: maximum iteration, irrespective of residual error
+        prox_max_iter: maximum proximal sub-iteration error
         callback: arbitrary logging function
             Signature: callback(*X, it=None)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
-        error: X^it - X^it-1
+        gradient: last iteration gradients
+        hessian: last iteration diagonalized Hessian
     """
     X = _as_tuple(X)
     N = len(X)
-    has_prox = prox is not None
     prox = _as_tuple(prox)
+    if len(prox) == 1:
+        prox = prox * N
     assert len(prox) == len(X)
 
     if np.isscalar(e_rel):
@@ -148,12 +157,16 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
     assert b2 >= 0 and b2 < 1
     assert eps >= 0
     assert p > 0 and p <= 0.5
-    algorithm = algorithm.lower()
-    assert algorithm in ["adam", "adamx", "amsgrad", "padam"]
+    scheme = scheme.lower()
+    assert scheme in ["adam", "adamx", "amsgrad", "padam", "radam"]
 
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
-    Vhat = [np.zeros(x.shape, x.dtype) for x in X]
+    Vhat = [None,] * N
+    Phi = [None,] * N
+    Psi = [None,] * N
+    Sub_iter = [0,] * N
+    rho_inf = 2 / (1 - b2) - 1 # for RAdam
 
     for it in range(max_iter):
 
@@ -162,68 +175,88 @@ def adam(X, grad, step, prox=None, algorithm="adam", b1=0.9, b2=0.999, eps=10**-
 
         X_ = _copy_tuple(X)
         G = _as_tuple(grad(*X))
-        S = _as_tuple(step(*X, it=it))
+        Alpha = _as_tuple(step(*X, it=it))
+
+        t = it + 1
+        b1t = b1[it]**t
+        b2t = b2**t
 
         for j in range(N):
+            # moving averages
             M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
             V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
 
-            if algorithm == "adam":
-                # decay terms folded into Vhat
-                Vhat[j] = V[j] / (1 - b2**(it + 1)) * (1 - b1[it]**(it+1))**2
+            # bias correction
+            if bias_correction:
+                Phi[j] = M[j] / (1 - b1t)
+                _vhat = V[j] / (1 - b2t)
+            else:
+                Phi[j] = M[j]
+                _vhat = V[j]
+
+            # Vhat
+            if it == 0 or scheme in ['adam', 'radam']:
+                Vhat[j] = _vhat
             else:
                 # maximum propagation of Vhat
                 factor = 1
-                if it > 0 and algorithm == "adamx":
+                if scheme == "adamx":
                     factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
-                Vhat[j] = np.maximum(V[j], factor * Vhat[j])
+                Vhat[j] = np.maximum(factor * Vhat[j], _vhat)
 
-            if algorithm == "padam":
-                denom = Vhat[j]**p
+            # Psi
+            if scheme == "padam":
+                Psi[j] = Vhat[j]**p
             else:
-                denom = np.sqrt(Vhat[j])
+                Psi[j] = np.sqrt(Vhat[j])
+                if scheme == "adam":
+                    Psi[j] += eps
+                if scheme == "radam":
+                    rho = rho_inf - 2*t*b2t / (1 - b2t)
+                    if rho > 4:
+                        r = np.sqrt((rho-4) * (rho-2) * rho_inf / (rho_inf-4) / (rho_inf-2) / rho)
+                        Psi[j] /= r
+                    else:
+                        Psi[j][:] = 1
 
-            if algorithm == "adam":
-                denom += eps
+            X[j][:] -= Alpha[j] * Phi[j] / Psi[j]
 
-            X[j][:] -= S[j] * M[j] / denom
+            if prox[j] is not None:
 
+                # if prox_max_iter <= 1:
+                #     alpha_ = Alpha[j] / Psi[j]
+                #     X[j][:] = prox[j](X[j], alpha_)
+                # else:
 
-        if has_prox:
-            Z = _copy_tuple(X)
-            if algorithm == "padam":
-                h = tuple(Vhat[j]**p for j in range(N))
-            else:
-                h = tuple(np.sqrt(Vhat[j]) for j in range(N))
-            gamma = tuple(1 / np.max(h[j]**2) for j in range(N))
+                # proximal subiterations to solve for optimality
+                z = X[j].copy()
+                gamma = Alpha[j] / np.max(Psi[j])
 
-            # proximal projection with metric h
-            for j in range(N):
-                for prox_it in range(max_iter):
-                    Z_ = prox[j](Z[j] - gamma[j] * h[j] * (Z[j] - X[j]), gamma)
+                for tau in range(1, prox_max_iter + 1):
+                    z_ = prox[j](z - gamma / Alpha[j] * Psi[j] * (z - X[j]), gamma)
 
-                    converged = utils.l2sq(Z_ - Z[j]) <= e_rel[j]**2*utils.l2sq(Z[j])
-                    Z[j][:] = Z_
+                    converged = utils.l2sq(z_ - z) <= e_rel[j]**2 * utils.l2sq(z)
+                    z = z_
 
                     if converged:
                         break
 
-                logger.debug("Proximal sub-iterations for variable {}: {}".format(j, prox_it+1))
+                logger.debug("Proximal sub-iterations for variable {}: {}".format(j, tau))
+                Sub_iter[j] += tau
 
-                X[j][:] = Z[j]
+                X[j][:] = z
 
         # test for fixed point convergence
-        errors = tuple(X[j] - X_[j] for j in range(N))
-        converged = tuple(utils.l2sq(errors[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+        converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
 
         if all(converged):
             break
 
-    logger.info("Completed {0} iterations".format(it+1))
+    logger.info("Completed {0} iterations and {1} sub-iterations".format(t, Sub_iter))
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged
+    return converged, Phi, Psi
 
 
 def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
