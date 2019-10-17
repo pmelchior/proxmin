@@ -58,13 +58,15 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     if relax is not None:
         assert relax > 0 and relax < 1.5
 
+    if callback is None:
+        callback = utils.NullCallback()
+
     # init
     stepper = utils.NesterovStepper(accelerated=accelerated)
 
     for it in range(max_iter):
 
-        if callback is not None:
-            callback(*X, it=it)
+        callback(*X, it=it)
 
         # use Nesterov acceleration (if omega > 0), automatically incremented
         omega = stepper.omega
@@ -168,10 +170,12 @@ def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.
     Sub_iter = [0,] * N
     rho_inf = 2 / (1 - b2) - 1 # for RAdam
 
+    if callback is None:
+        callback = utils.NullCallback()
+
     for it in range(max_iter):
 
-        if callback is not None:
-            callback(*X, it=it)
+        callback(*X, it=it)
 
         X_ = _copy_tuple(X)
         G = _as_tuple(grad(*X))
@@ -297,10 +301,13 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
     it = 0
     slack = 1.
 
+    if callback is None:
+        callback = utils.NullCallback()
+
+
     while it < max_iter:
 
-        if callback is not None:
-            callback(X, it=it)
+        callback(X, it=it)
 
         step_f_ = slack * step_f(X, it=it)
 
@@ -398,10 +405,12 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
     it, omega = 0, 0
     slack = 1.
 
+    if callback is None:
+        callback = utils.NullCallback()
+
     while it < max_iter:
 
-        if callback is not None:
-            callback(X, it=it)
+        callback(X, it=it)
 
         step_f_ = slack * step_f(X, it=it)
 
@@ -571,10 +580,12 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
     slack = [1.] * N
     it = 0
 
+    if callback is None:
+        callback = utils.NullCallback()
+
     while it < max_iter:
 
-        if callback is not None:
-            callback(*X, it=it)
+        callback(*X, it=it)
 
         # iterate over blocks X_j
         for j in update_order:

@@ -96,6 +96,10 @@ class Traceback(object):
     def clear(self):
         self._trace = []
 
+class NullCallback(object):
+    def __call__(self, *X, it):
+        pass
+
 
 class ApproximateCache(object):
     """Cache function evaluations that don't change much
