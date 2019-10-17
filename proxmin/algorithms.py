@@ -102,8 +102,84 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
 
     return converged, G, S
 
+def _adam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
+    # moving averages
+    M[:] = (1 - b1[it]) * G + b1[it] * M
+    V[:] = (1 - b2) * (G**2) + b2 * V
 
-def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
+    # bias correction
+    t = it + 1
+    Phi = M / (1 - b1[it]**t)
+    Psi = np.sqrt(V / (1 - b2**t)) + eps
+
+    return Phi, Psi
+
+def _amsgrad_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
+    # moving averages
+    M[:] = (1 - b1[it]) * G + b1[it] * M
+    V[:] = (1 - b2) * (G**2) + b2 * V
+
+    Phi = M
+    if Vhat is None:
+        Vhat = V
+    else:
+        Vhat[:] = np.maximum(Vhat, V)
+    Psi = np.sqrt(Vhat)
+
+    return Phi, Psi
+
+def _padam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
+    # moving averages
+    M[:] = (1 - b1[it]) * G + b1[it] * M
+    V[:] = (1 - b2) * (G**2) + b2 * V
+
+    Phi = M
+    if Vhat is None:
+        Vhat = V
+    else:
+        Vhat[:] = np.maximum(Vhat, V)
+    Psi = Vhat**p
+
+    return Phi, Psi
+
+def _adamx_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
+    # moving averages
+    M[:] = (1 - b1[it]) * G + b1[it] * M
+    V[:] = (1 - b2) * (G**2) + b2 * V
+
+    Phi = M
+    if Vhat is None:
+        Vhat = V
+    else:
+        factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
+        Vhat[:] = np.maximum(factor * Vhat, V)
+    Psi = np.sqrt(Vhat)
+
+    return Phi, Psi
+
+def _radam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
+    rho_inf = 2 / (1 - b2) - 1
+
+    # moving averages
+    M[:] = (1 - b1[it]) * G + b1[it] * M
+    V[:] = (1 - b2) * (G**2) + b2 * V
+
+    # bias correction
+    t = it + 1
+    Phi = M / (1 - b1[it]**t)
+    rho = rho_inf - 2*t*b2**t / (1 - b2**t)
+
+    if rho > 4:
+        Psi = np.sqrt(V / (1 - b2**t))
+        r = np.sqrt((rho-4) * (rho-2) * rho_inf / (rho_inf-4) / (rho_inf-2) / rho)
+        Psi /= r
+    else:
+        Psi = np.ones(G.shape, G.dtype)
+
+    return Phi, Psi
+
+
+def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
     """Adaptive Proximal Gradient Method
 
     Uses multiple variants of adaptive quasi-Newton gradient descent
@@ -124,7 +200,6 @@ def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.
             Signature: step(*X, it=None) -> float
         prox: proximal operator of penalty function
         scheme: one of ["adam", "adamx", "amsgrad", "padam","radam"]
-        bias_correction: if the moving averages are bias corrected
         b1: (float or array) first moment momentum decay
         b2: second moment momentum decay
         eps: softening of second moment (only for algorithm == "adam")
@@ -162,13 +237,18 @@ def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.
     scheme = scheme.lower()
     assert scheme in ["adam", "adamx", "amsgrad", "padam", "radam"]
 
+    phi_psi = {
+        "adam" : _adam_phi_psi,
+        "amsgrad": _amsgrad_phi_psi,
+        "padam": _padam_phi_psi,
+        "adamx": _adamx_phi_psi,
+        "radam": _radam_phi_psi
+    }
+
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
     Vhat = [None,] * N
-    Phi = [None,] * N
-    Psi = [None,] * N
     Sub_iter = [0,] * N
-    rho_inf = 2 / (1 - b2) - 1 # for RAdam
 
     if callback is None:
         callback = utils.NullCallback()
@@ -181,63 +261,18 @@ def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.
         G = _as_tuple(grad(*X))
         Alpha = _as_tuple(step(*X, it=it))
 
-        t = it + 1
-        b1t = b1[it]**t
-        b2t = b2**t
-
         for j in range(N):
-            # moving averages
-            M[j] = (1 - b1[it]) * G[j] + b1[it] * M[j]
-            V[j] = (1 - b2) * (G[j]**2) + b2 * V[j]
-
-            # bias correction
-            if bias_correction:
-                Phi[j] = M[j] / (1 - b1t)
-                _vhat = V[j] / (1 - b2t)
-            else:
-                Phi[j] = M[j]
-                _vhat = V[j]
-
-            # Vhat
-            if it == 0 or scheme in ['adam', 'radam']:
-                Vhat[j] = _vhat
-            else:
-                # maximum propagation of Vhat
-                factor = 1
-                if scheme == "adamx":
-                    factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
-                Vhat[j] = np.maximum(factor * Vhat[j], _vhat)
-
-            # Psi
-            if scheme == "padam":
-                Psi[j] = Vhat[j]**p
-            else:
-                Psi[j] = np.sqrt(Vhat[j])
-                if scheme == "adam":
-                    Psi[j] += eps
-                if scheme == "radam":
-                    rho = rho_inf - 2*t*b2t / (1 - b2t)
-                    if rho > 4:
-                        r = np.sqrt((rho-4) * (rho-2) * rho_inf / (rho_inf-4) / (rho_inf-2) / rho)
-                        Psi[j] /= r
-                    else:
-                        Psi[j][:] = 1
-
-            X[j][:] -= Alpha[j] * Phi[j] / Psi[j]
+            Phi, Psi = phi_psi[scheme](it, G[j], M[j], V[j], Vhat[j], b1, b2, eps, p)
+            X[j][:] -= Alpha[j] * Phi / Psi
 
             if prox[j] is not None:
 
-                # if prox_max_iter <= 1:
-                #     alpha_ = Alpha[j] / Psi[j]
-                #     X[j][:] = prox[j](X[j], alpha_)
-                # else:
-
                 # proximal subiterations to solve for optimality
                 z = X[j].copy()
-                gamma = Alpha[j] / np.max(Psi[j])
+                gamma = Alpha[j] / np.max(Psi)
 
                 for tau in range(1, prox_max_iter + 1):
-                    z_ = prox[j](z - gamma / Alpha[j] * Psi[j] * (z - X[j]), gamma)
+                    z_ = prox[j](z - gamma / Alpha[j] * Psi * (z - X[j]), gamma)
 
                     converged = utils.l2sq(z_ - z) <= e_rel[j]**2 * utils.l2sq(z)
                     z = z_
@@ -256,7 +291,7 @@ def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.
         if all(converged):
             break
 
-    logger.info("Completed {0} iterations and {1} sub-iterations".format(t, Sub_iter))
+    logger.info("Completed {0} iterations and {1} sub-iterations".format(it+1, Sub_iter))
     if not all(converged):
         logger.warning("Solution did not converge")
 

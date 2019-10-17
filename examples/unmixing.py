@@ -123,9 +123,9 @@ if __name__ == "__main__":
     adaprox_args = {'b1': b1, 'b2': b2, 'prox_max_iter': 100}
     runs = (
         (proxmin.pgm, all_args, 'PGM'),
-        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="adam", bias_correction=True), 'Adam'),
-        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="padam", p=0.125, bias_correction=False), 'PAdam'),
-        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="amsgrad", bias_correction=False), 'AMSGrad'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="adam"), 'Adam'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="padam", p=0.125), 'PAdam'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="amsgrad"), 'AMSGrad')
     )
 
     best_AS = None
