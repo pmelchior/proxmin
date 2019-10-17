@@ -130,7 +130,7 @@ if __name__ == "__main__":
 
     s_step = 1e-5
     step = {
-        proxmin.pgm: partial(proxmin.nmf.step, W=W),
+        proxmin.pgm: partial(proxmin.nmf.step_pgm, W=W),
         proxmin.adaprox: lambda A, S, it: (np.mean(A, axis=0)/10, s_step)
     }
 
@@ -151,9 +151,9 @@ if __name__ == "__main__":
     b2 = 0.999
     runs = (
         (proxmin.pgm, all_args, 'PGM'),
-        (proxmin.adaprox, dict(all_args, algorithm="adam", bias_correction=True, b1=b1, b2=b2, prox_max_iter=100), 'Adam'),
-        (proxmin.adaprox, dict(all_args, algorithm="padam", bias_correction=False, b1=b1, b2=b2, prox_max_iter=100, p=0.45), 'PAdam'),
-        (proxmin.adaprox, dict(all_args, algorithm="amsgrad", bias_correction=False, b1=b1, b2=b2, prox_max_iter=100), 'AMSGrad'),
+        (proxmin.adaprox, dict(all_args, scheme="adam", bias_correction=True, b1=b1, b2=b2, prox_max_iter=100), 'Adam'),
+        (proxmin.adaprox, dict(all_args, scheme="padam", bias_correction=False, b1=b1, b2=b2, prox_max_iter=100, p=0.45), 'PAdam'),
+        (proxmin.adaprox, dict(all_args, scheme="amsgrad", bias_correction=False, b1=b1, b2=b2, prox_max_iter=100), 'AMSGrad'),
     )
 
     best_AS = None

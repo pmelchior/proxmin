@@ -123,9 +123,9 @@ if __name__ == "__main__":
     adaprox_args = {'b1': b1, 'b2': b2, 'prox_max_iter': 100}
     runs = (
         (proxmin.pgm, all_args, 'PGM'),
-        (proxmin.adaprox, dict(all_args, **adaprox_args, algorithm="adam", bias_correction=True), 'Adam'),
-        (proxmin.adaprox, dict(all_args, **adaprox_args, algorithm="padam", p=0.125, bias_correction=False), 'PAdam'),
-        (proxmin.adaprox, dict(all_args, **adaprox_args, algorithm="amsgrad", bias_correction=False), 'AMSGrad'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="adam", bias_correction=True), 'Adam'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="padam", p=0.125, bias_correction=False), 'PAdam'),
+        (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="amsgrad", bias_correction=False), 'AMSGrad'),
     )
 
     best_AS = None
@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     for i,alpha in enumerate([0.01, 0.1]):
         step = {
-            proxmin.pgm: proxmin.nmf.step,
+            proxmin.pgm: proxmin.nmf.step_pgm,
             proxmin.adaprox: lambda *X, it: (alpha, alpha)
         }
 

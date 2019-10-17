@@ -39,7 +39,8 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
 
     Returns:
         converged: whether the optimizer has converged within e_rel
-        error: X^it - X^it-1
+        gradient: last iteration gradients
+        step: last iteration steps
     """
     # Set up: turn X and prox into tuples
     X = _as_tuple(X)
@@ -100,7 +101,7 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
     return converged, G, S
 
 
-def adaprox(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
+def adaprox(X, grad, step, prox=None, scheme="adam", bias_correction=True, b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
     """Adaptive Proximal Gradient Method
 
     Uses multiple variants of adaptive quasi-Newton gradient descent
@@ -120,7 +121,7 @@ def adaprox(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1
             Should be smaller than 2/L with L the Lipschitz constant of grad
             Signature: step(*X, it=None) -> float
         prox: proximal operator of penalty function
-        algorithm: one of ["adam", "adamx", "amsgrad", "padam","radam"]
+        scheme: one of ["adam", "adamx", "amsgrad", "padam","radam"]
         bias_correction: if the moving averages are bias corrected
         b1: (float or array) first moment momentum decay
         b2: second moment momentum decay
@@ -134,7 +135,8 @@ def adaprox(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1
 
     Returns:
         converged: whether the optimizer has converged within e_rel
-        error: X^it - X^it-1
+        gradient: last iteration gradients
+        hessian: last iteration diagonalized Hessian
     """
     X = _as_tuple(X)
     N = len(X)
@@ -155,8 +157,8 @@ def adaprox(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1
     assert b2 >= 0 and b2 < 1
     assert eps >= 0
     assert p > 0 and p <= 0.5
-    algorithm = algorithm.lower()
-    assert algorithm in ["adam", "adamx", "amsgrad", "padam", "radam"]
+    scheme = scheme.lower()
+    assert scheme in ["adam", "adamx", "amsgrad", "padam", "radam"]
 
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
@@ -193,23 +195,23 @@ def adaprox(X, grad, step, prox=None, algorithm="adam", bias_correction=True, b1
                 _vhat = V[j]
 
             # Vhat
-            if it == 0 or algorithm in ['adam', 'radam']:
+            if it == 0 or scheme in ['adam', 'radam']:
                 Vhat[j] = _vhat
             else:
                 # maximum propagation of Vhat
                 factor = 1
-                if algorithm == "adamx":
+                if scheme == "adamx":
                     factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
                 Vhat[j] = np.maximum(factor * Vhat[j], _vhat)
 
             # Psi
-            if algorithm == "padam":
+            if scheme == "padam":
                 Psi[j] = Vhat[j]**p
             else:
                 Psi[j] = np.sqrt(Vhat[j])
-                if algorithm == "adam":
+                if scheme == "adam":
                     Psi[j] += eps
-                if algorithm == "radam":
+                if scheme == "radam":
                     rho = rho_inf - 2*t*b2t / (1 - b2t)
                     if rho > 4:
                         r = np.sqrt((rho-4) * (rho-2) * rho_inf / (rho_inf-4) / (rho_inf-2) / rho)
