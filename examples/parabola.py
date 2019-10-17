@@ -131,14 +131,14 @@ if __name__ == "__main__":
     plotResults(traceback.trace, "PGM accelerated", boundary=boundary)
 
     # Adaptive moments methods: Adam and friends
-    for algorithm in ["adam", "adamx", "amsgrad", "padam"]:
+    for scheme in ["adam", "adamx", "amsgrad", "padam", "radam"]:
         X = X0.copy()
         traceback.clear()
-        b1 = 0.5
-        if algorithm != "adam":
+        b1 = 0.0
+        if scheme != "adam":
             b1 = b1 ** np.arange(1, max_iter+1)
-        proxmin.adam(X, grad_f, step_f, prox=prox, b1=b1, b2=0.999, max_iter=max_iter, callback=traceback, algorithm=algorithm)
-        plotResults(traceback.trace, algorithm.upper(), boundary=boundary)
+        proxmin.adaprox(X, grad_f, step_f, prox=prox, b1=b1, b2=0.5, max_iter=max_iter, callback=traceback, scheme=scheme, p=0.125)
+        plotResults(traceback.trace, scheme.upper(), boundary=boundary)
 
     # ADMM
     X = X0.copy()
