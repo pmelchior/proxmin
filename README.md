@@ -86,7 +86,7 @@ def prox_circle(X, step):
     return center + radius*np.array([np.cos(phi), np.sin(phi)])
 
 X = np.array([-1.,-1.]) # or whereever
-converged = proxmin.pgm(X, grad_f, step_f, prox=prox_circle)
+converged, grad, step = proxmin.pgm(X, grad_f, step_f, prox=prox_circle)
 ```
 
 Since the objective function is smooth and there is only one constraint, one can simply perform a sequence of *forward-backward* steps: a step in gradient direction, followed by a projection onto the constraint subset. That is, in essence, the proximal gradient method.
@@ -100,27 +100,29 @@ def prox_gradf(X, step):
     """Proximal gradient step"""
     return X-step*grad_f(X)
 
-convergence = proxmin.admm(X, prox_gradf, step_f, prox_g=prox_circle, e_rel=1e-3, e_abs=1e-3)
+converged = proxmin.admm(X, prox_gradf, step_f, prox_g=prox_circle, e_rel=1e-3, e_abs=1e-3)
 ```
 
 ## Constrained matrix factorization (CMF)
 
 Matrix factorization seeks to approximate a target matrix `Y` as a product of `np.dot(A,S)`. If those constraints are only non-negativity, the method is known as NMF.
 
-We have extended the capabilities substantially by allowing for an arbitrary number of constraints to be enforced on either matrix factor:
+We have extended the capabilities by allowing for an arbitrary number of constraints to be enforced on either matrix factor:
 
 ```python
-# PGM-like approach for each factor
+# PGM approach for each factor
 prox_A = ... # a single constraint on A, solved by projection
 prox_S = ... # a single constraint on S, solved by projection
 A0, S0 = ... # initialization
-A, S = proxmin.nmf.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
+proxmin.nmf.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S)
+
+# same with AdaProx-AMSGrad
+proxmin.nmf.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, algorithm=proxmin.algorithms.adaprox, scheme="amsgrad")
+
 # for multiple constraints, solved by ADMM-style split
 proxs_g = [[...], # list of proxs for A
            [...]] # list of proxs for S
-A, S = proxmin.nmf.nmf(Y, A0, S0, proxs_g=proxs_g)
+A, S = proxmin.nmf.nmf(Y, A0, S0, algorithm=proxmin.algorithms.bsdmm, proxs_g=proxs_g)
 # or a combination
-A, S = proxmin.nmf.nmf(Y, A0, S0, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
+A, S = proxmin.nmf.nmf(Y, A0, S0, algorithm=proxmin.algorithms.bsdmm, prox_A=prox_A, prox_S=prox_S, proxs_g=proxs_g)
 ```
-
-A complete and practical example is given in [these notebooks](https://github.com/fred3m/hyperspectral) of the hyperspectral unmixing study from our paper.
