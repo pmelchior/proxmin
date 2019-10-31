@@ -66,34 +66,38 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
 
     for it in range(max_iter):
 
-        callback(*X, it=it)
+        try:
+            callback(*X, it=it)
 
-        # use Nesterov acceleration (if omega > 0), automatically incremented
-        omega = stepper.omega
-        if omega > 0:
-            _X = tuple(X[j] + omega*(X[j] - X_[j]) for j in range(N))
-        else:
-            _X = X
+            # use Nesterov acceleration (if omega > 0), automatically incremented
+            omega = stepper.omega
+            if omega > 0:
+                _X = tuple(X[j] + omega*(X[j] - X_[j]) for j in range(N))
+            else:
+                _X = X
 
-        # make copy for convergence test and acceleration
-        X_ = _copy_tuple(X)
+            # make copy for convergence test and acceleration
+            X_ = _copy_tuple(X)
 
-        # (P)GM step
-        G = _as_tuple(grad(*_X))
-        S = _as_tuple(step(*_X, it=it))
+            # (P)GM step
+            G = _as_tuple(grad(*_X))
+            S = _as_tuple(step(*_X, it=it))
 
-        for j in range(N):
-            _X[j][:] -= S[j] * G[j]
+            for j in range(N):
+                _X[j][:] -= S[j] * G[j]
 
-            if prox[j] is not None:
-                X[j][:] = prox[j](_X[j], S[j])
+                if prox[j] is not None:
+                    X[j][:] = prox[j](_X[j], S[j])
 
-            if relax is not None:
-                X[j][:] += (relax-1)*(X[j] - X_[j])
+                if relax is not None:
+                    X[j][:] += (relax-1)*(X[j] - X_[j])
 
-        # test for fixed point convergence
-        converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
-        if all(converged):
+            # test for fixed point convergence
+            converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+            if all(converged):
+                break
+
+        except StopIteration:
             break
 
     logger.info("Completed {0} iterations".format(it+1))
@@ -262,40 +266,43 @@ def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8,
 
     for it in range(max_iter):
 
-        callback(*X, it=it)
+        try:
+            callback(*X, it=it)
+            X_ = _copy_tuple(X)
+            G = _as_tuple(grad(*X))
+            Alpha = _as_tuple(step(*X, it=it))
 
-        X_ = _copy_tuple(X)
-        G = _as_tuple(grad(*X))
-        Alpha = _as_tuple(step(*X, it=it))
+            for j in range(N):
+                Phi, Psi = phi_psi[scheme](it, G[j], M[j], V[j], Vhat[j], b1, b2, eps, p)
+                X[j][:] -= Alpha[j] * Phi / Psi
 
-        for j in range(N):
-            Phi, Psi = phi_psi[scheme](it, G[j], M[j], V[j], Vhat[j], b1, b2, eps, p)
-            X[j][:] -= Alpha[j] * Phi / Psi
+                if prox[j] is not None:
 
-            if prox[j] is not None:
+                    # proximal subiterations to solve for optimality
+                    z = X[j].copy()
+                    gamma = Alpha[j] / np.max(Psi)
 
-                # proximal subiterations to solve for optimality
-                z = X[j].copy()
-                gamma = Alpha[j] / np.max(Psi)
+                    for tau in range(1, prox_max_iter + 1):
+                        z_ = prox[j](z - gamma / Alpha[j] * Psi * (z - X[j]), gamma)
 
-                for tau in range(1, prox_max_iter + 1):
-                    z_ = prox[j](z - gamma / Alpha[j] * Psi * (z - X[j]), gamma)
+                        converged = utils.l2sq(z_ - z) <= e_rel[j]**2 * utils.l2sq(z)
+                        z = z_
 
-                    converged = utils.l2sq(z_ - z) <= e_rel[j]**2 * utils.l2sq(z)
-                    z = z_
+                        if converged:
+                            break
 
-                    if converged:
-                        break
+                    logger.debug("Proximal sub-iterations for variable {}: {}".format(j, tau))
+                    Sub_iter[j] += tau
 
-                logger.debug("Proximal sub-iterations for variable {}: {}".format(j, tau))
-                Sub_iter[j] += tau
+                    X[j][:] = z
 
-                X[j][:] = z
+            # test for fixed point convergence
+            converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
 
-        # test for fixed point convergence
-        converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+            if all(converged):
+                break
 
-        if all(converged):
+        except StopIteration:
             break
 
     logger.info("Completed {0} iterations and {1} sub-iterations".format(it+1, Sub_iter))
