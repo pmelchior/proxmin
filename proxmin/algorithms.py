@@ -111,7 +111,6 @@ def _adam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     t = it + 1
     Phi = M / (1 - b1[it]**t)
     Psi = np.sqrt(V / (1 - b2**t)) + eps
-
     return Phi, Psi
 
 def _amsgrad_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
@@ -124,8 +123,10 @@ def _amsgrad_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
         Vhat = V
     else:
         Vhat[:] = np.maximum(Vhat, V)
+    # sanitize zero-gradient elements
+    if eps > 0:
+        Vhat = np.maximum(Vhat, eps)
     Psi = np.sqrt(Vhat)
-
     return Phi, Psi
 
 def _padam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
@@ -138,8 +139,10 @@ def _padam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
         Vhat = V
     else:
         Vhat[:] = np.maximum(Vhat, V)
+    # sanitize zero-gradient elements
+    if eps > 0:
+        Vhat = np.maximum(Vhat, eps)
     Psi = Vhat**p
-
     return Phi, Psi
 
 def _adamx_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
@@ -153,8 +156,10 @@ def _adamx_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     else:
         factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
         Vhat[:] = np.maximum(factor * Vhat, V)
+    # sanitize zero-gradient elements
+    if eps > 0:
+        Vhat = np.maximum(Vhat, eps)
     Psi = np.sqrt(Vhat)
-
     return Phi, Psi
 
 def _radam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
@@ -175,11 +180,13 @@ def _radam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
         Psi /= r
     else:
         Psi = np.ones(G.shape, G.dtype)
-
+    # sanitize zero-gradient elements
+    if eps > 0:
+        Psi = np.maximum(Psi, np.sqrt(eps))
     return Phi, Psi
 
 
-def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=10**-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
+def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
     """Adaptive Proximal Gradient Method
 
     Uses multiple variants of adaptive quasi-Newton gradient descent
@@ -295,7 +302,7 @@ def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=10**-
     if not all(converged):
         logger.warning("Solution did not converge")
 
-    return converged, Phi, Psi
+    return converged, M, V
 
 
 def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
