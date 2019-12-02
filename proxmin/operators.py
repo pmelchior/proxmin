@@ -44,18 +44,32 @@ def prox_unity_plus(X, step, axis=0):
     X[:] = prox_unity(prox_plus(X, step), step, axis=axis)
     return X
 
-def prox_min(X, step, thresh=0):
+def prox_min(X, step, thresh=0, type='relative'):
     """Projection onto numbers above `thresh`
+
+    If type == 'relative', the penalty is expressed in units of the function value;
+    if type == 'absolute', it's expressed in units of the variable `X`.
     """
-    thresh_ = _step_gamma(step, thresh)
+    assert type in ['relative', 'absolute']
+    if type == 'relative':
+        thresh_ = _step_gamma(step, thresh)
+    else:
+        thresh_ = thresh
     below = X - thresh_ < 0
     X[below] = thresh_
     return X
 
-def prox_max(X, step, thresh=0):
+def prox_max(X, step, thresh=0, type='relative'):
     """Projection onto numbers below `thresh`
+
+    If type == 'relative', the penalty is expressed in units of the function value;
+    if type == 'absolute', it's expressed in units of the variable `X`.
     """
-    thresh_ = _step_gamma(step, thresh)
+    assert type in ['relative', 'absolute']
+    if type == 'relative':
+        thresh_ = _step_gamma(step, thresh)
+    else:
+        thresh_ = thresh
     above = X - thresh_ > 0
     X[above] = thresh_
     return X
@@ -81,50 +95,78 @@ def prox_components(X, step, prox=None, axis=0):
 
 #### Regularization function below ####
 
-def prox_hard(X, step, thresh=0):
+def prox_hard(X, step, thresh=0, type='relative'):
     """Hard thresholding
 
     X if |X| >= thresh, otherwise 0
     NOTE: modifies X in place
+
+    If type == 'relative', the penalty is expressed in units of the function value;
+    if type == 'absolute', it's expressed in units of the variable `X`.
     """
-    thresh_ = _step_gamma(step, thresh)
+    assert type in ['relative', 'absolute']
+    if type == 'relative':
+        thresh_ = _step_gamma(step, thresh)
+    else:
+        thresh_ = thresh
     below = np.abs(X) < thresh_
     X[below] = 0
     return X
 
-def prox_hard_plus(X, step, thresh=0):
+def prox_hard_plus(X, step, thresh=0, type='relative'):
     """Hard thresholding with projection onto non-negative numbers
+
+    If type == 'relative', the penalty is expressed in units of the function value;
+    if type == 'absolute', it's expressed in units of the variable `X`.
     """
-    X[:] = prox_plus(prox_hard(X, step, thresh=thresh), step)
+    X[:] = prox_plus(prox_hard(X, step, thresh=thresh, type=type), step)
     return X
 
-def prox_soft(X, step, thresh=0):
+def prox_soft(X, step, thresh=0, type='relative'):
     """Soft thresholding proximal operator
+
+    If type == 'relative', the penalty is expressed in units of the function value;
+    if type == 'absolute', it's expressed in units of the variable `X`.
     """
-    thresh_ = _step_gamma(step, thresh)
+    assert type in ['relative', 'absolute']
+    if type == 'relative':
+        thresh_ = _step_gamma(step, thresh)
+    else:
+        thresh_ = thresh
     X[:] = np.sign(X)*prox_plus(np.abs(X) - thresh_, step)
     return X
 
-def prox_soft_plus(X, step, thresh=0):
+def prox_soft_plus(X, step, thresh=0, type='relative'):
     """Soft thresholding with projection onto non-negative numbers
+
+    If type == 'relative', the penalty is expressed in units of the function value;
+    if type == 'absolute', it's expressed in units of the variable `X`.
     """
-    X[:] = prox_plus(prox_soft(X, step, thresh=thresh), step)
+    X[:] = prox_plus(prox_soft(X, step, thresh=thresh, type=type), step)
     return X
 
-def prox_max_entropy(X, step, gamma=1):
+def prox_max_entropy(X, step, gamma=1, type='relative'):
     """Proximal operator for maximum entropy regularization.
 
     g(x) = gamma \sum_i x_i ln(x_i)
 
     has the analytical solution of gamma W(1/gamma exp((X-gamma)/gamma)), where
     W is the Lambert W function.
+
+    If type == 'relative', the penalty is expressed in units of the function value;
+    if type == 'absolute', it's expressed in units of the variable `X`.
     """
     from scipy.special import lambertw
-    gamma_ = _step_gamma(step, gamma)
+    assert type in ['relative', 'absolute']
+    if type == 'relative':
+        gamma_ = _step_gamma(step, gamma)
+    else:
+        gamma_ = gamma
     # minimize entropy: return gamma_ * np.real(lambertw(np.exp((X - gamma_) / gamma_) / gamma_))
     above = X > 0
     X[above] = gamma_ * np.real(lambertw(np.exp(X[above]/gamma_ - 1) / gamma_))
     return X
+
 
 class AlternatingProjections(object):
     """Combine several proximal operators in the form of Alternating Projections
@@ -162,58 +204,3 @@ class AlternatingProjections(object):
                 if prox is cls:
                     return i
         return -1
-
-def get_gradient_y(shape, py):
-    """Calculate the gradient in the y direction to the line at py
-
-    The y gradient operator is a block matrix, where each block is the size of the image width.
-    The matrix itself is made up of (img_height x img_height) blocks, most of which are all zeros.
-    """
-    import scipy.sparse
-
-    height, width = shape
-    rows = []
-    empty = scipy.sparse.dia_matrix((width, width))
-    identity = scipy.sparse.identity(width)
-
-    # Create the blocks by row, beginning with blocks leading up to the peak row from the top
-    for n in range(py):
-        row = [empty]*n
-        row += [-identity, identity]
-        row += [empty]*(height-n-2)
-        rows.append(row)
-    # Set all elements in the peak row to zero
-    rows.append([empty]*height)
-    # Create the blocks for the rows leading up to the peak row from the bottom
-    for n in range(height-py-1):
-        row = [empty]*(py+n)
-        row += [identity, -identity]
-        row += [empty]*(height-py-n-2)
-        rows.append(row)
-    return scipy.sparse.bmat(rows)
-
-def get_gradient_x(shape, px):
-    """Calculate the gradient in the x direction to the line at px
-
-    The y gradient operator is a block diagonal matrix, where each block is the size of the image width.
-    The matrix itself is made up of (img_height x img_height) blocks, most of which are all zeros.
-    """
-    import scipy.sparse
-
-    height, width = shape
-    size = height * width
-
-    # Set the diagonal to -1, except for the value at the peak, which is zero
-    c = -np.ones((width,))
-    c[px] = 0
-    # Set the pixels leading up to the peak from the left
-    r = np.zeros(c.shape, dtype=c.dtype)
-    r[:px] = 1
-    # Set the pixels leading up to the peak from the right
-    l = np.zeros(c.shape, dtype=c.dtype)
-    l[px:] = 1
-    # Make a block for a single row in the image
-    block = scipy.sparse.diags([l, c, r], [-1, 0,1], shape=(width,width))
-    # Use the same block for each row
-    op = scipy.sparse.block_diag([block for n in range(height)])
-    return op
