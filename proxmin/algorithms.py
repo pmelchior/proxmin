@@ -223,6 +223,7 @@ def adaprox(
     b1=0.9,
     b2=0.999,
     eps=1e-8,
+    check_convergence=True,
     p=0.25,
     e_rel=1e-6,
     max_iter=1000,
@@ -254,6 +255,7 @@ def adaprox(
         eps: softening of second moment (only for algorithm == "adam")
         p: power of second moment (only for algorithm == "padam")
         e_rel: relative error of X
+        check_convergence: whether convergence checks are performed
         max_iter: maximum iteration, irrespective of residual error
         prox_max_iter: maximum proximal sub-iteration error
         callback: arbitrary logging function
@@ -261,8 +263,8 @@ def adaprox(
 
     Returns:
         converged: whether the optimizer has converged within e_rel
-        gradient: last iteration gradients
-        hessian: last iteration diagonalized Hessian
+        gradient: last iteration gradient
+        gradient2: last iteration squared gradient
     """
     X = _as_tuple(X)
     N = len(X)
@@ -273,13 +275,13 @@ def adaprox(
 
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
+    assert len(e_rel) == len(X)
 
     if not hasattr(b1, "__iter__"):
         b1 = np.array((b1,) * max_iter)
-
-    assert len(e_rel) == len(X)
     assert len(b1) == max_iter
     assert (b1 >= 0).all() and (b1 < 1).all()
+
     assert b2 >= 0 and b2 < 1
     assert eps >= 0
     assert p > 0 and p <= 0.5
@@ -306,9 +308,10 @@ def adaprox(
 
         try:
             callback(*X, it=it)
-            X_ = _copy_tuple(X)
             G = _as_tuple(grad(*X))
             Alpha = _as_tuple(step(*X, it=it))
+            if check_convergence:
+                X_ = _copy_tuple(X)
 
             for j in range(N):
                 Phi, Psi = phi_psi[scheme](
@@ -339,13 +342,14 @@ def adaprox(
                     X[j][:] = z
 
             # test for fixed point convergence
-            converged = tuple(
-                utils.l2sq(X[j] - X_[j]) <= e_rel[j] ** 2 * utils.l2sq(X[j])
-                for j in range(N)
-            )
+            if check_convergence:
+                converged = tuple(
+                    utils.l2sq(X[j] - X_[j]) <= e_rel[j] ** 2 * utils.l2sq(X[j])
+                    for j in range(N)
+                )
 
-            if all(converged):
-                break
+                if all(converged):
+                    break
 
         except StopIteration:
             break
@@ -353,8 +357,10 @@ def adaprox(
     logger.info(
         "Completed {0} iterations and {1} sub-iterations".format(it + 1, Sub_iter)
     )
-    if not all(converged):
+    if check_convergence and not all(converged):
         logger.warning("Solution did not converge")
+    if not check_convergence:
+        converged = (None,) * N
 
     return converged, M, V
 
