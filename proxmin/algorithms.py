@@ -5,18 +5,32 @@ from functools import partial
 from . import utils
 
 import logging
+
 logger = logging.getLogger("proxmin")
+
 
 def _copy_tuple(X):
     return tuple(item.copy() for item in X)
+
 
 def _as_tuple(X):
     if type(X) in [list, tuple]:
         return X
     else:
-        return X,
+        return (X,)
 
-def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max_iter=1000, callback=None):
+
+def pgm(
+    X,
+    grad,
+    step,
+    prox=None,
+    accelerated=False,
+    relax=None,
+    e_rel=1e-6,
+    max_iter=1000,
+    callback=None,
+):
     """Proximal Gradient Method
 
     Adapted from Combettes 2009, Algorithm 3.4.
@@ -72,7 +86,7 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
             # use Nesterov acceleration (if omega > 0), automatically incremented
             omega = stepper.omega
             if omega > 0:
-                _X = tuple(X[j] + omega*(X[j] - X_[j]) for j in range(N))
+                _X = tuple(X[j] + omega * (X[j] - X_[j]) for j in range(N))
             else:
                 _X = X
 
@@ -90,37 +104,42 @@ def pgm(X, grad, step, prox=None, accelerated=False, relax=None, e_rel=1e-6, max
                     X[j][:] = prox[j](_X[j], S[j])
 
                 if relax is not None:
-                    X[j][:] += (relax-1)*(X[j] - X_[j])
+                    X[j][:] += (relax - 1) * (X[j] - X_[j])
 
             # test for fixed point convergence
-            converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+            converged = tuple(
+                utils.l2sq(X[j] - X_[j]) <= e_rel[j] ** 2 * utils.l2sq(X[j])
+                for j in range(N)
+            )
             if all(converged):
                 break
 
         except StopIteration:
             break
 
-    logger.info("Completed {0} iterations".format(it+1))
+    logger.info("Completed {0} iterations".format(it + 1))
     if not all(converged):
         logger.warning("Solution did not converge")
 
     return converged, G, S
 
+
 def _adam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     # moving averages
     M[:] = (1 - b1[it]) * G + b1[it] * M
-    V[:] = (1 - b2) * (G**2) + b2 * V
+    V[:] = (1 - b2) * (G ** 2) + b2 * V
 
     # bias correction
     t = it + 1
-    Phi = M / (1 - b1[it]**t)
-    Psi = np.sqrt(V / (1 - b2**t)) + eps
+    Phi = M / (1 - b1[it] ** t)
+    Psi = np.sqrt(V / (1 - b2 ** t)) + eps
     return Phi, Psi
+
 
 def _amsgrad_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     # moving averages
     M[:] = (1 - b1[it]) * G + b1[it] * M
-    V[:] = (1 - b2) * (G**2) + b2 * V
+    V[:] = (1 - b2) * (G ** 2) + b2 * V
 
     Phi = M
     if Vhat is None:
@@ -133,10 +152,11 @@ def _amsgrad_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     Psi = np.sqrt(Vhat)
     return Phi, Psi
 
+
 def _padam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     # moving averages
     M[:] = (1 - b1[it]) * G + b1[it] * M
-    V[:] = (1 - b2) * (G**2) + b2 * V
+    V[:] = (1 - b2) * (G ** 2) + b2 * V
 
     Phi = M
     if Vhat is None:
@@ -146,19 +166,20 @@ def _padam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     # sanitize zero-gradient elements
     if eps > 0:
         Vhat = np.maximum(Vhat, eps)
-    Psi = Vhat**p
+    Psi = Vhat ** p
     return Phi, Psi
+
 
 def _adamx_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     # moving averages
     M[:] = (1 - b1[it]) * G + b1[it] * M
-    V[:] = (1 - b2) * (G**2) + b2 * V
+    V[:] = (1 - b2) * (G ** 2) + b2 * V
 
     Phi = M
     if Vhat is None:
         Vhat = V
     else:
-        factor = (1 - b1[it])**2 / (1 - b1[it-1])**2
+        factor = (1 - b1[it]) ** 2 / (1 - b1[it - 1]) ** 2
         Vhat[:] = np.maximum(factor * Vhat, V)
     # sanitize zero-gradient elements
     if eps > 0:
@@ -166,21 +187,24 @@ def _adamx_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     Psi = np.sqrt(Vhat)
     return Phi, Psi
 
+
 def _radam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     rho_inf = 2 / (1 - b2) - 1
 
     # moving averages
     M[:] = (1 - b1[it]) * G + b1[it] * M
-    V[:] = (1 - b2) * (G**2) + b2 * V
+    V[:] = (1 - b2) * (G ** 2) + b2 * V
 
     # bias correction
     t = it + 1
-    Phi = M / (1 - b1[it]**t)
-    rho = rho_inf - 2*t*b2**t / (1 - b2**t)
+    Phi = M / (1 - b1[it] ** t)
+    rho = rho_inf - 2 * t * b2 ** t / (1 - b2 ** t)
 
     if rho > 4:
-        Psi = np.sqrt(V / (1 - b2**t))
-        r = np.sqrt((rho-4) * (rho-2) * rho_inf / (rho_inf-4) / (rho_inf-2) / rho)
+        Psi = np.sqrt(V / (1 - b2 ** t))
+        r = np.sqrt(
+            (rho - 4) * (rho - 2) * rho_inf / (rho_inf - 4) / (rho_inf - 2) / rho
+        )
         Psi /= r
     else:
         Psi = np.ones(G.shape, G.dtype)
@@ -190,7 +214,21 @@ def _radam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     return Phi, Psi
 
 
-def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8, p=0.25, e_rel=1e-6, max_iter=1000, prox_max_iter=1000, callback=None):
+def adaprox(
+    X,
+    grad,
+    step,
+    prox=None,
+    scheme="adam",
+    b1=0.9,
+    b2=0.999,
+    eps=1e-8,
+    p=0.25,
+    e_rel=1e-6,
+    max_iter=1000,
+    prox_max_iter=1000,
+    callback=None,
+):
     """Adaptive Proximal Gradient Method
 
     Uses multiple variants of adaptive quasi-Newton gradient descent
@@ -236,7 +274,7 @@ def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8,
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
 
-    if not hasattr(b1, '__iter__'):
+    if not hasattr(b1, "__iter__"):
         b1 = np.array((b1,) * max_iter)
 
     assert len(e_rel) == len(X)
@@ -249,17 +287,17 @@ def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8,
     assert scheme in ["adam", "adamx", "amsgrad", "padam", "radam"]
 
     phi_psi = {
-        "adam" : _adam_phi_psi,
+        "adam": _adam_phi_psi,
         "amsgrad": _amsgrad_phi_psi,
         "padam": _padam_phi_psi,
         "adamx": _adamx_phi_psi,
-        "radam": _radam_phi_psi
+        "radam": _radam_phi_psi,
     }
 
     M = [np.zeros(x.shape, x.dtype) for x in X]
     V = [np.zeros(x.shape, x.dtype) for x in X]
-    Vhat = [None,] * N
-    Sub_iter = [0,] * N
+    Vhat = [None] * N
+    Sub_iter = [0] * N
 
     if callback is None:
         callback = utils.NullCallback()
@@ -273,7 +311,9 @@ def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8,
             Alpha = _as_tuple(step(*X, it=it))
 
             for j in range(N):
-                Phi, Psi = phi_psi[scheme](it, G[j], M[j], V[j], Vhat[j], b1, b2, eps, p)
+                Phi, Psi = phi_psi[scheme](
+                    it, G[j], M[j], V[j], Vhat[j], b1, b2, eps, p
+                )
                 X[j][:] -= Alpha[j] * Phi / Psi
 
                 if prox[j] is not None:
@@ -285,19 +325,24 @@ def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8,
                     for tau in range(1, prox_max_iter + 1):
                         z_ = prox[j](z - gamma / Alpha[j] * Psi * (z - X[j]), gamma)
 
-                        converged = utils.l2sq(z_ - z) <= e_rel[j]**2 * utils.l2sq(z)
+                        converged = utils.l2sq(z_ - z) <= e_rel[j] ** 2 * utils.l2sq(z)
                         z = z_
 
                         if converged:
                             break
 
-                    logger.debug("Proximal sub-iterations for variable {}: {}".format(j, tau))
+                    logger.debug(
+                        "Proximal sub-iterations for variable {}: {}".format(j, tau)
+                    )
                     Sub_iter[j] += tau
 
                     X[j][:] = z
 
             # test for fixed point convergence
-            converged = tuple(utils.l2sq(X[j] - X_[j]) <= e_rel[j]**2*utils.l2sq(X[j]) for j in range(N))
+            converged = tuple(
+                utils.l2sq(X[j] - X_[j]) <= e_rel[j] ** 2 * utils.l2sq(X[j])
+                for j in range(N)
+            )
 
             if all(converged):
                 break
@@ -305,14 +350,27 @@ def adaprox(X, grad, step, prox=None, scheme="adam", b1=0.9, b2=0.999, eps=1e-8,
         except StopIteration:
             break
 
-    logger.info("Completed {0} iterations and {1} sub-iterations".format(it+1, Sub_iter))
+    logger.info(
+        "Completed {0} iterations and {1} sub-iterations".format(it + 1, Sub_iter)
+    )
     if not all(converged):
         logger.warning("Solution did not converge")
 
     return converged, M, V
 
 
-def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
+def admm(
+    X,
+    prox_f,
+    step_f,
+    prox_g=None,
+    step_g=None,
+    L=None,
+    e_rel=1e-6,
+    e_abs=0,
+    max_iter=1000,
+    callback=None,
+):
     """Alternating Direction Method of Multipliers
 
     This method implements the linearized ADMM from Parikh & Boyd (2014).
@@ -346,13 +404,12 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
     _L = utils.MatrixAdapter(L)
 
     # init
-    Z,U = utils.initZU(X, _L)
+    Z, U = utils.initZU(X, _L)
     it = 0
-    slack = 1.
+    slack = 1.0
 
     if callback is None:
         callback = utils.NullCallback()
-
 
     while it < max_iter:
 
@@ -370,8 +427,9 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
         LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f_, prox_g, step_g_, _L)
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        converged, error = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S,
-                                                                step_f, step_g, e_rel, e_abs)
+        converged, error = utils.check_constraint_convergence(
+            X, _L, LX, Z, U, R, S, step_f, step_g, e_rel, e_abs
+        )
 
         if converged:
             break
@@ -386,19 +444,30 @@ def admm(X, prox_f, step_f, prox_g=None, step_g=None, L=None, e_rel=1e-6, e_abs=
 
                     # re-init
                     it = 0
-                    Z,U  = utils.initZU(X, _L)
+                    Z, U = utils.initZU(X, _L)
                     logger.info("Restarting with step size slack = %.3f" % slack)
             X_ = X.copy()
             R_ = R
 
-    logger.info("Completed {0} iterations".format(it+1))
+    logger.info("Completed {0} iterations".format(it + 1))
     if not converged:
         logger.warning("Solution did not converge")
 
     return converged, error
 
 
-def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_abs=0, max_iter=1000, callback=None):
+def sdmm(
+    X,
+    prox_f,
+    step_f,
+    proxs_g=None,
+    steps_g=None,
+    Ls=None,
+    e_rel=1e-6,
+    e_abs=0,
+    max_iter=1000,
+    callback=None,
+):
     """Simultaneous-Direction Method of Multipliers
 
     This method is an extension of the linearized ADMM for multiple constraints.
@@ -432,8 +501,18 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
     """
 
     # fall-back to simple ADMM
-    if proxs_g is None or not hasattr(proxs_g, '__iter__'):
-        return admm(X, prox_f, step_f, prox_g=proxs_g, step_g=steps_g, L=Ls, e_rel=e_rel, max_iter=max_iter, callback=callback)
+    if proxs_g is None or not hasattr(proxs_g, "__iter__"):
+        return admm(
+            X,
+            prox_f,
+            step_f,
+            prox_g=proxs_g,
+            step_g=steps_g,
+            L=Ls,
+            e_rel=e_rel,
+            max_iter=max_iter,
+            callback=callback,
+        )
 
     # from here on we know that proxs_g is a list
     M = len(proxs_g)
@@ -450,9 +529,9 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
         _L.append(utils.MatrixAdapter(Ls[i]))
 
     # Initialization
-    Z,U = utils.initZU(X, _L)
+    Z, U = utils.initZU(X, _L)
     it, omega = 0, 0
-    slack = 1.
+    slack = 1.0
 
     if callback is None:
         callback = utils.NullCallback()
@@ -466,15 +545,21 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
         # get/check compatible step size for g
         # get/check compatible step size for g
         if steps_g is None:
-            steps_g_ = [ utils.get_step_g(step_f_, _L[i].spectral_norm, M=M) for i in range(M) ]
+            steps_g_ = [
+                utils.get_step_g(step_f_, _L[i].spectral_norm, M=M) for i in range(M)
+            ]
         else:
             steps_g_ = steps_g
 
         # update the variables
-        LX, R, S = utils.update_variables(X, Z, U, prox_f, step_f_, proxs_g, steps_g_, _L)
+        LX, R, S = utils.update_variables(
+            X, Z, U, prox_f, step_f_, proxs_g, steps_g_, _L
+        )
 
         # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-        converged, errors = utils.check_constraint_convergence(X, _L, LX, Z, U, R, S, step_f_, steps_g_, e_rel, e_abs)
+        converged, errors = utils.check_constraint_convergence(
+            X, _L, LX, Z, U, R, S, step_f_, steps_g_, e_rel, e_abs
+        )
 
         if converged:
             break
@@ -488,20 +573,33 @@ def sdmm(X, prox_f, step_f, proxs_g=None, steps_g=None, Ls=None, e_rel=1e-6, e_a
 
                 # re-init
                 it = 0
-                Z,U  = utils.initZU(X, _L)
+                Z, U = utils.initZU(X, _L)
                 logger.info("Restarting with step size slack = %.3f" % slack)
 
         R_ = R
         X_ = X.copy()
 
-    logger.info("Completed {0} iterations".format(it+1))
+    logger.info("Completed {0} iterations".format(it + 1))
     if not converged:
         logger.warning("Solution did not converge")
 
     return converged
 
 
-def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_order=None, steps_g_update='steps_f', max_iter=1000, e_rel=1e-6, e_abs=0, callback=None):
+def bsdmm(
+    X,
+    proxs_f,
+    steps_f_cb,
+    proxs_g=None,
+    steps_g=None,
+    Ls=None,
+    update_order=None,
+    steps_g_update="steps_f",
+    max_iter=1000,
+    e_rel=1e-6,
+    e_abs=0,
+    callback=None,
+):
     """Block-Simultaneous Method of Multipliers.
 
     This method is an extension of the linearized SDMM, i.e. ADMM for multiple
@@ -558,7 +656,7 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
         proxs_g = [None] * N
     assert len(proxs_g) == N
     steps_g_update = steps_g_update.lower()
-    assert steps_g_update in ['steps_f', 'fixed', 'relative']
+    assert steps_g_update in ["steps_f", "fixed", "relative"]
 
     if np.isscalar(e_rel):
         e_rel = [e_rel] * N
@@ -571,17 +669,20 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
     else:
         # we could check that every component is in the list
         # but one can think of cases when a component is *not* to be updated.
-        #assert len(update_order) == N
+        # assert len(update_order) == N
         pass
 
-    if steps_g_update == 'steps_f':
+    if steps_g_update == "steps_f":
         if steps_g is not None:
             logger.debug("Setting steps_g = None for update strategy 'steps_f'.")
             steps_g = None
-    if steps_g_update in ['fixed', 'relative']:
+    if steps_g_update in ["fixed", "relative"]:
         if steps_g is None:
-            logger.debug("Ignoring steps_g update strategy '%s' because steps_g is None." % steps_g_update)
-            steps_g_update = 'steps_f'
+            logger.debug(
+                "Ignoring steps_g update strategy '%s' because steps_g is None."
+                % steps_g_update
+            )
+            steps_g_update = "steps_f"
 
     # if steps_g / Ls are None or single: create N duplicates
     if not hasattr(steps_g, "__iter__"):
@@ -614,10 +715,10 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
             _L.append(utils.MatrixAdapter(None))
         else:
             steps_g_.append([[None] for i in range(M[j])])
-            _L.append([ utils.MatrixAdapter(Ls[j][m]) for m in range(M[j])])
+            _L.append([utils.MatrixAdapter(Ls[j][m]) for m in range(M[j])])
 
     # Initialization
-    Z, U = [],[]
+    Z, U = [], []
     LX, R, S = [None] * N, [None] * N, [None] * N
     for j in range(N):
         Zj, Uj = utils.initZU(X[j], _L[j])
@@ -626,7 +727,7 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
 
     # containers
     converged, errors = [None] * N, [None] * N
-    slack = [1.] * N
+    slack = [1.0] * N
     it = 0
 
     if callback is None:
@@ -642,21 +743,36 @@ def bsdmm(X, proxs_f, steps_f_cb, proxs_g=None, steps_g=None, Ls=None, update_or
             steps_f_j = steps_f_cb(X, j=j) * slack[j]
 
             # update steps_g relative to change of steps_f ...
-            if steps_g_update == 'relative':
+            if steps_g_update == "relative":
                 for i in range(M[j]):
                     steps_g[j][i] *= steps_f_j / steps_f[j]
             steps_f[j] = steps_f_j
             # ... or update them as required by the most conservative limit
-            if steps_g_update == 'steps_f':
+            if steps_g_update == "steps_f":
                 for i in range(M[j]):
-                    steps_g_[j][i] = utils.get_step_g(steps_f[j], _L[j][i].spectral_norm, N=N, M=M[j])
+                    steps_g_[j][i] = utils.get_step_g(
+                        steps_f[j], _L[j][i].spectral_norm, N=N, M=M[j]
+                    )
 
             # update the variables
-            LX[j], R[j], S[j] = utils.update_variables(X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j])
+            LX[j], R[j], S[j] = utils.update_variables(
+                X[j], Z[j], U[j], proxs_f_j, steps_f[j], proxs_g[j], steps_g_[j], _L[j]
+            )
 
             # convergence criteria, adapted from Boyd 2011, Sec 3.3.1
-            converged[j], errors[j] = utils.check_constraint_convergence(X[j], _L[j], LX[j], Z[j], U[j],
-                R[j], S[j], steps_f[j],steps_g_[j],e_rel[j], e_abs[j])
+            converged[j], errors[j] = utils.check_constraint_convergence(
+                X[j],
+                _L[j],
+                LX[j],
+                Z[j],
+                U[j],
+                R[j],
+                S[j],
+                steps_f[j],
+                steps_g_[j],
+                e_rel[j],
+                e_abs[j],
+            )
 
         it += 1
 
