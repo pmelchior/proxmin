@@ -228,6 +228,9 @@ def adaprox(
     e_rel=1e-6,
     max_iter=1000,
     prox_max_iter=1000,
+    M=None,
+    V=None,
+    Vhat=None,
     callback=None,
 ):
     """Adaptive Proximal Gradient Method
@@ -240,7 +243,12 @@ def adaprox(
         * AdamX (Phuong & Phong 2019)
         * RAdam (Liu et al. 2019)
 
-    and PGM sub-iterations to satisfy feasibility and optimality.
+    and PGM sub-iterations to satisfy feasibility and optimality. See details of the
+    algorihtms in the respective papers.
+
+    NOTE:
+    Setting M, V, Vhat allows to continue a previous run, e.g. for a warm start
+    of a slightly changed problem. If not set, they will be initialized with 0.
 
     Args:
         X: initial X, will be updated
@@ -258,13 +266,17 @@ def adaprox(
         check_convergence: whether convergence checks are performed
         max_iter: maximum iteration, irrespective of residual error
         prox_max_iter: maximum proximal sub-iteration error
+        M: current state first moment of gradient
+        V: current second moment of gradient
+        Vhat: current maximized second moment of gradient
         callback: arbitrary logging function
             Signature: callback(*X, it=None)
 
     Returns:
         converged: whether the optimizer has converged within e_rel
-        gradient: last iteration gradient
-        gradient2: last iteration squared gradient
+        M: last iteration gradient
+        V: last iteration squared gradient
+        Vhat: last iteration maximized squared gradient
     """
     X = _as_tuple(X)
     N = len(X)
@@ -296,9 +308,19 @@ def adaprox(
         "radam": _radam_phi_psi,
     }
 
-    M = [np.zeros(x.shape, x.dtype) for x in X]
-    V = [np.zeros(x.shape, x.dtype) for x in X]
-    Vhat = [None] * N
+    # cold or warm start?
+    if M is None:
+        M = tuple(np.zeros(x.shape, x.dtype) for x in X)
+    else:
+        assert len(M) == N and all(m.shape == x.shape for x,m in zip(X, M))
+    if V is None:
+        V = tuple(np.zeros(x.shape, x.dtype) for x in X)
+    else:
+        assert len(V) == N and all(v.shape == x.shape for x,v in zip(X, V))
+    if Vhat is None:
+        Vhat = [None] * N
+    else:
+        assert len(Vhat) == N and all(vhat.shape == x.shape for x,vhat in zip(X, Vhat))
     Sub_iter = [0] * N
 
     if callback is None:
@@ -362,7 +384,7 @@ def adaprox(
     if not check_convergence:
         converged = (None,) * N
 
-    return converged, M, V
+    return converged, M, V, Vhat
 
 
 def admm(

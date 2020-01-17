@@ -154,7 +154,7 @@ if __name__ == "__main__":
             S = S0.copy()
             traceback.clear()
             try:
-                c, G, V = alg((A, S), grad, step[alg], **kwargs)
+                alg((A, S), grad, step[alg], **kwargs)
                 loss = proxmin.nmf.log_likelihood(A, S, Y=Y)
                 print("{}: final loss = {}\n".format(label, loss))
 
