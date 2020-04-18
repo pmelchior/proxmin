@@ -1,10 +1,5 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 import os
-
-packages = []
-for root, dirs, files in os.walk('.'):
-    if not root.startswith('./build') and '__init__.py' in files:
-        packages.append(root[2:])
 
 long_description = open('README.md').read()
 
@@ -13,9 +8,9 @@ setup(
     description = 'Proximal methods for constrained optimization',
     long_description = long_description,
     long_description_content_type='text/markdown',
-    packages = packages,
+    packages=find_packages(),
     include_package_data=False,
-    version = '0.6.9',
+    use_scm_version=True,
     license='MIT',
     author = 'Peter Melchior, Fred Moolekamp',
     author_email = 'peter.m.melchior@gmail.com',
@@ -30,5 +25,6 @@ setup(
         "Topic :: Scientific/Engineering :: Information Analysis"
     ],
     keywords = ['optimization', 'constrained optimization', 'proximal algorithms', 'data analysis', 'non-negative matrix factorization'],
-    requires=['numpy','scipy']
+    setup_requires=['setuptools_scm', 'setuptools_scm_git_archive'],
+    install_requires=['numpy','scipy'],
 )
