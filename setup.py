@@ -15,7 +15,7 @@ setup(
     long_description_content_type='text/markdown',
     packages = packages,
     include_package_data=False,
-    version = '0.6.9',
+    version = '0.6.10',
     license='MIT',
     author = 'Peter Melchior, Fred Moolekamp',
     author_email = 'peter.m.melchior@gmail.com',
@@ -30,5 +30,5 @@ setup(
         "Topic :: Scientific/Engineering :: Information Analysis"
     ],
     keywords = ['optimization', 'constrained optimization', 'proximal algorithms', 'data analysis', 'non-negative matrix factorization'],
-    requires=['numpy','scipy']
+    install_requires=['numpy','scipy']
 )
