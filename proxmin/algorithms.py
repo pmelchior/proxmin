@@ -26,26 +26,24 @@ def pgm(
     step,
     prox=None,
     accelerated=False,
-    relax=None,
     e_rel=1e-6,
     max_iter=1000,
     callback=None,
 ):
     """Proximal Gradient Method
 
-    Adapted from Combettes 2009, Algorithm 3.4.
-    The accelerated version is Algorithm 3.6 with modifications
-    from Xu & Yin (2015).
+    Adapted from Parikh & Boyd (2014, section 4.2)
+    The accelerated version is FISTA (Beck & Teboulle, 2009)
+    with block coordinate descent from from Xu & Yin (2015).
 
     Args:
         X: initial X, will be updated
         grad: gradient function of f wrt to X
         step: function to compute step size.
             Should be smaller than 2/L with L the Lipschitz constant of grad
-            Signature: step(*X, it=None) -> float
+            Signature: step(*X, it=None, grad=None) -> float
         prox: proximal operator for penalty functions
         accelerated: if Nesterov acceleration should be used
-        relax: (over)relaxation parameter, 0 < relax < 1.5
         e_rel: relative error of X sufficient for convergence
         max_iter: maximum iteration
         callback: arbitrary logging function
@@ -68,9 +66,6 @@ def pgm(
         e_rel = (e_rel,) * N
 
     assert len(e_rel) == len(X)
-
-    if relax is not None:
-        assert relax > 0 and relax < 1.5
 
     if callback is None:
         callback = utils.NullCallback()
@@ -102,9 +97,6 @@ def pgm(
 
                 if prox[j] is not None:
                     X[j][:] = prox[j](_X[j], S[j])
-
-                if relax is not None:
-                    X[j][:] += (relax - 1) * (X[j] - X_[j])
 
             # test for fixed point convergence
             converged = tuple(
@@ -277,6 +269,9 @@ def adaprox(
         M: last iteration gradient
         V: last iteration squared gradient
         Vhat: last iteration maximized squared gradient
+
+    Reference:
+        Melchior, Joseph & Moolekamp, Algorithm 1 (arXiv:1910.10094)
     """
     X = _as_tuple(X)
     N = len(X)

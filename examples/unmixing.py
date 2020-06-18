@@ -128,9 +128,10 @@ if __name__ == "__main__":
     all_args = {"prox": prox, "max_iter": 1000, "callback": traceback, "e_rel": 1e-4}
     b1 = 0.9
     b2 = 0.999
+    pgm_args = {"accelerated": True}
     adaprox_args = {"b1": b1, "b2": b2, "prox_max_iter": 100}
     runs = (
-        (proxmin.pgm, all_args, "PGM"),
+        (proxmin.pgm, dict(all_args, **pgm_args), "PGM"),
         (proxmin.adaprox, dict(all_args, **adaprox_args, scheme="adam"), "Adam"),
         (
             proxmin.adaprox,

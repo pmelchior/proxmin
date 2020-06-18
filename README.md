@@ -9,8 +9,8 @@ The methods in this package provide solvers for constrained optimization problem
 
 The algorithms:
 
-* **Proximal Gradient Method (PGM)**: forward-backward splitting with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) penalty function. Includes multi-block optimization and Nesterov acceleration.
-* **Adam and derivatives (AdamX, AMSGrad, PAdam)**: forward-backward splitting with adaptive gradient steps for single- and multi-block optimization.
+* **Proximal Gradient Method (PGM/ISTA)**: forward-backward splitting with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) penalty function. Includes multi-block optimization and Nesterov acceleration (FISTA).
+* **Proximal Adam and derivatives (AdamX, AMSGrad, PAdam)**: forward-backward splitting with adaptive gradient steps for single- and multi-block optimization.
 * **Alternating Direction Method of Multipliers (ADMM)**: Rachford-Douglas splitting for two potentially non-smooth functions. We use its linearized form to solve for additional linear mappings in the penalty functions.
 * **Simultaneous Direction Method of Multipliers (SDMM)**: Extension of linearized ADMM for several penalty functions.
 * **Block-Simultaneous Direction Method of Multipliers (bSDMM)**: Extension of SDMM to work with objective functions that are convex in several arguments. It's a proximal version of Block coordinate descent methods.
@@ -53,9 +53,9 @@ The code works on python>2.7 and requires numpy and scipy. It is fully compatibl
 
 The gradient-based methods PGM and Adam expect two callback function: one to compute the gradients, the other to compute step sizes. In the former case, the step sizes are bound between 0 and 2/L, where L is the Lipschitz constant of the gradient.
 
-The penalty functions are given as proximal mappings: `X <- prox(X, step)`. 
+The penalty functions are given as proximal mappings: `X <- prox(X, step)`.
 
-Many proximal operators can be constructed analytically, see e.g. [Parikh & Boyd (2014)](https://web.stanford.edu/~boyd/papers/prox_algs.html). We provide a number of common ones in `proxmin.operators`. An important class of constraints are indicator functions of convex sets, for which the proximal operator, given some point **X**, returns the closest point to **X** in the Euclidean norm that is in the set. 
+Many proximal operators can be constructed analytically, see e.g. [Parikh & Boyd (2014)](https://web.stanford.edu/~boyd/papers/prox_algs.html). We provide a number of common ones in `proxmin.operators`. An important class of constraints are indicator functions of convex sets, for which the proximal operator, given some point **X**, returns the closest point to **X** in the Euclidean norm that is in the set.
 
 **Example:** find the minimum of a shifted parabola on the unit circle in 2D
 

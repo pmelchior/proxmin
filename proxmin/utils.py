@@ -167,7 +167,7 @@ class ApproximateCache(object):
             self.last = self.it
             val = self.func(*args, **kwargs)
 
-            # increase stride when rel. changes in L are smaller than (1-slack)/2
+            # increase stride when rel. changes in val are smaller than (1-slack)/2
             if self.it > 1 and self.slack > 0:
                 rel_error = np.abs(self.stored - val) / self.stored
                 budget = self.slack / 2

@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     # PGM without boundary
     X = X0.copy()
-    proxmin.pgm(X, grad_f, step_f, max_iter=max_iter, relax=1, callback=traceback)
+    proxmin.pgm(X, grad_f, step_f, max_iter=max_iter, callback=traceback)
     plotResults(traceback.trace, "PGM no boundary")
 
     # PGM
