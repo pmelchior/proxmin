@@ -26,6 +26,8 @@ def pgm(
     step,
     prox=None,
     accelerated=False,
+    backtracking=False,
+    f=None,
     e_rel=1e-6,
     max_iter=1000,
     callback=None,
@@ -39,11 +41,17 @@ def pgm(
     Args:
         X: initial X, will be updated
         grad: gradient function of f wrt to X
+            Signature: grad(*X) -> df/dX
         step: function to compute step size.
             Should be smaller than 2/L with L the Lipschitz constant of grad
             Signature: step(*X, it=None, grad=None) -> float
         prox: proximal operator for penalty functions
+            If X is a list for block coordinate PGM, prox can be a list as well.
+            Signature: prox(X, step) -> X'
         accelerated: if Nesterov acceleration should be used
+        backtracking: if backtracking should be used to determine step sizes
+        f: smooth function, only needed for backtracking
+            Signature: f(*X) -> float
         e_rel: relative error of X sufficient for convergence
         max_iter: maximum iteration
         callback: arbitrary logging function
@@ -62,16 +70,24 @@ def pgm(
         prox = prox * N
     assert len(prox) == len(X)
 
+    # convert prox=None to prox_id, so that we don't have to test later on
+    from .operators import prox_id
+    prox = tuple(p if p is not None else prox_id for p in prox )
+
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
 
     assert len(e_rel) == len(X)
+
+    assert backtracking is False or f is not None
 
     if callback is None:
         callback = utils.NullCallback()
 
     # init
     stepper = utils.NesterovStepper(accelerated=accelerated)
+    # for backtracking
+    T = [1.,] * N
 
     for it in range(max_iter):
 
@@ -82,6 +98,8 @@ def pgm(
             omega = stepper.omega
             if omega > 0:
                 _X = tuple(X[j] + omega * (X[j] - X_[j]) for j in range(N))
+            elif backtracking:
+                _X = _copy_tuple(X)
             else:
                 _X = X
 
@@ -93,10 +111,26 @@ def pgm(
             S = _as_tuple(step(*_X, it=it))
 
             for j in range(N):
-                _X[j][:] -= S[j] * G[j]
+                X[j][:] = prox[j](_X[j] - T[j]*S[j] * G[j], T[j]*S[j])
 
-                if prox[j] is not None:
-                    X[j][:] = prox[j](_X[j], S[j])
+            if backtracking:
+                # Beck-Teboulle, eq. 3.2
+                f_now = f(*X)
+                if it == 0:
+                    f_prev = f(*X_)
+
+                # dropping g from F and Q because it cancels
+                while  f_now > f_prev + \
+                    np.sum([ np.sum((X[j] - X_[j])*G[j]) + 0.5 / (T[j]*S[j]) * np.sum((X[j] - X_[j])**2)  for j in range(N) ]):
+
+                    # find largest relative update direction
+                    jmax = np.argmax([ np.max(np.abs(S[j]*G[j]))/np.max(np.abs(X_[j])) for j in range(N) ])
+                    T[jmax] /= 2
+                    X[jmax][:] = prox[jmax](_X[jmax] - T[jmax]*S[jmax] * G[jmax], T[jmax]*S[jmax])
+                    f_now = f(*X)
+
+                # save f_prev from current function evaluation
+                f_prev = f_now
 
             # test for fixed point convergence
             converged = tuple(
