@@ -9,17 +9,6 @@ import logging
 logger = logging.getLogger("proxmin")
 
 
-def _copy_tuple(X):
-    return tuple(item.copy() for item in X)
-
-
-def _as_tuple(X):
-    if type(X) in [list, tuple]:
-        return X
-    else:
-        return (X,)
-
-
 def pgm(
     X,
     grad,
@@ -63,9 +52,9 @@ def pgm(
         step: last iteration steps
     """
     # Set up: turn X and prox into tuples
-    X = _as_tuple(X)
+    X = utils._as_tuple(X)
     N = len(X)
-    prox = _as_tuple(prox)
+    prox = utils._as_tuple(prox)
     if len(prox) == 1:
         prox = prox * N
     assert len(prox) == len(X)
@@ -76,16 +65,22 @@ def pgm(
 
     if np.isscalar(e_rel):
         e_rel = (e_rel,) * N
-
     assert len(e_rel) == len(X)
 
     assert backtracking is False or f is not None
+
+    # check if step function has grads argument
+    try:
+        step(*X, it=0, grads=X)
+        _step = step
+    except TypeError:
+        _step = lambda *X, it=None, grads=None: step(*X, it=it)
 
     if callback is None:
         callback = utils.NullCallback()
 
     # init
-    stepper = utils.NesterovStepper(accelerated=accelerated)
+    accel = utils.NesterovAccelerator(accelerated=accelerated)
     # for backtracking
     T = [1.,] * N
 
@@ -95,26 +90,25 @@ def pgm(
             callback(*X, it=it)
 
             # use Nesterov acceleration (if omega > 0), automatically incremented
-            omega = stepper.omega
+            omega = accel.omega
             if omega > 0:
                 _X = tuple(X[j] + omega * (X[j] - X_[j]) for j in range(N))
             elif backtracking:
-                _X = _copy_tuple(X)
+                _X = utils._copy_tuple(X)
             else:
                 _X = X
 
             # make copy for convergence test and acceleration
-            X_ = _copy_tuple(X)
+            X_ = utils._copy_tuple(X)
 
-            # (P)GM step
-            G = _as_tuple(grad(*_X))
-            S = _as_tuple(step(*_X, it=it))
-
+            # PGM step
+            G = utils._as_tuple(grad(*_X))
+            S = utils._as_tuple(_step(*_X, it=it, grads=G))
             for j in range(N):
                 X[j][:] = prox[j](_X[j] - T[j]*S[j] * G[j], T[j]*S[j])
 
             if backtracking:
-                # Beck-Teboulle, eq. 3.2
+                # Beck & Teboulle, eq. 3.2
                 f_now = f(*X)
                 if it == 0:
                     f_prev = f(*X_)
@@ -158,6 +152,17 @@ def _adam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
     # bias correction
     t = it + 1
     Phi = M / (1 - b1[it] ** t)
+    Psi = np.sqrt(V / (1 - b2 ** t)) + eps
+    return Phi, Psi
+
+def _nadam_phi_psi(it, G, M, V, Vhat, b1, b2, eps, p):
+    # moving averages
+    M[:] = (1 - b1[it]) * G + b1[it] * M
+    V[:] = (1 - b2) * (G ** 2) + b2 * V
+
+    # bias correction
+    t = it + 1
+    Phi = (b1[it] * M[:] + (1- b1[it]) * G) / (1 - b1[it] ** t)
     Psi = np.sqrt(V / (1 - b2 ** t)) + eps
     return Phi, Psi
 
@@ -264,6 +269,7 @@ def adaprox(
     Uses multiple variants of adaptive quasi-Newton gradient descent
 
         * Adam (Kingma & Ba 2015)
+        * NAdam (Dozat 2016)
         * AMSGrad (Reddi, Kale & Kumar 2018)
         * PAdam (Chen & Gu 2018)
         * AdamX (Phuong & Phong 2019)
@@ -283,7 +289,7 @@ def adaprox(
             Should be smaller than 2/L with L the Lipschitz constant of grad
             Signature: step(*X, it=None) -> float
         prox: proximal operator of penalty function
-        scheme: one of ["adam", "adamx", "amsgrad", "padam","radam"]
+        scheme: one of ["adam", "nadam", "adamx", "amsgrad", "padam", "radam"]
         b1: (float or array) first moment momentum decay
         b2: second moment momentum decay
         eps: softening of second moment (only for algorithm == "adam")
@@ -307,9 +313,9 @@ def adaprox(
     Reference:
         Melchior, Joseph & Moolekamp, Algorithm 1 (arXiv:1910.10094)
     """
-    X = _as_tuple(X)
+    X = utils._as_tuple(X)
     N = len(X)
-    prox = _as_tuple(prox)
+    prox = utils._as_tuple(prox)
     if len(prox) == 1:
         prox = prox * N
     assert len(prox) == len(X)
@@ -327,10 +333,11 @@ def adaprox(
     assert eps >= 0
     assert p > 0 and p <= 0.5
     scheme = scheme.lower()
-    assert scheme in ["adam", "adamx", "amsgrad", "padam", "radam"]
+    assert scheme in ["adam", "nadam", "adamx", "amsgrad", "padam", "radam"]
 
     phi_psi = {
         "adam": _adam_phi_psi,
+        "nadam": _nadam_phi_psi,
         "amsgrad": _amsgrad_phi_psi,
         "padam": _padam_phi_psi,
         "adamx": _adamx_phi_psi,
@@ -359,10 +366,10 @@ def adaprox(
 
         try:
             callback(*X, it=it)
-            G = _as_tuple(grad(*X))
-            Alpha = _as_tuple(step(*X, it=it))
+            G = utils._as_tuple(grad(*X))
+            Alpha = utils._as_tuple(step(*X, it=it))
             if check_convergence:
-                X_ = _copy_tuple(X)
+                X_ = utils._copy_tuple(X)
 
             for j in range(N):
                 Phi, Psi = phi_psi[scheme](

@@ -1,6 +1,15 @@
 from __future__ import print_function, division
 import numpy as np
 
+def _copy_tuple(X):
+    return tuple(item.copy() for item in X)
+
+
+def _as_tuple(X):
+    if type(X) in [list, tuple, np.ndarray]:
+        return X
+    else:
+        return (X,)
 
 def get_spectral_norm(L):
     if L is None:
@@ -181,7 +190,7 @@ class ApproximateCache(object):
         return self.stored
 
 
-class NesterovStepper(object):
+class NesterovAccelerator(object):
     def __init__(self, accelerated=False):
         self.t = 1.0
         self.accelerated = accelerated
@@ -195,6 +204,41 @@ class NesterovStepper(object):
             return om
         else:
             return 0
+
+
+class BarzilaiBorweinStepper:
+
+    def __init__(self, type=1, init_r=0.1):
+        assert type in [1,2]
+        self.r = init_r
+        self.type = type
+
+    def step(self, *X, it=None, grads=None):
+        N = len(X)
+        if it==0:
+            self.Delta = np.array([np.inf,] * N)
+            self.X_ = _copy_tuple(X)
+            self.G_ = grads # no copy needed, created fresh every single iteration
+            return tuple( self.r * np.max(np.abs(X[j])) / np.max(np.abs(grads[j])) for j in range(N))
+
+        G = grads
+        S = tuple(X[j] - self.X_[j] for j in range(N))
+        Y = tuple(G[j] - self.G_[j] for j in range(N))
+
+        self.X_  = _copy_tuple(X)
+        self.G_ = grads
+
+        if self.type == 1:
+            A = tuple(np.sum(S[j]**2) / np.sum(S[j] * Y[j]) for j in range(N))
+        else:
+            A = tuple(np.sum(S[j] * Y[j]) / np.sum(Y[j]**2) for j in range(N))
+
+        # stabilized version from Burdakov+ (arxiv: 1907.06409), Algorithm 2.1
+        if it <= 3:
+            self.Delta = np.minimum(self.Delta, tuple(np.sqrt(np.sum(S[j]**2)) for j in range(N)))
+        Astab = tuple(self.Delta[j] / np.sqrt(np.sum(G[j]**2)) for j in range(N))
+
+        return np.minimum(np.abs(A), Astab)
 
 
 def initZU(X, L):

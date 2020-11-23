@@ -9,9 +9,9 @@ The methods in this package provide solvers for constrained optimization problem
 
 The algorithms:
 
-* **Proximal Gradient Method (PGM/ISTA)**: forward-backward splitting with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) penalty function. Includes multi-block optimization and Nesterov acceleration (FISTA).
-* **Proximal Adam and derivatives (AdamX, AMSGrad, PAdam)**: forward-backward splitting with adaptive gradient steps for single- and multi-block optimization.
-* **Alternating Direction Method of Multipliers (ADMM)**: Rachford-Douglas splitting for two potentially non-smooth functions. We use its linearized form to solve for additional linear mappings in the penalty functions.
+* **Proximal Gradient Method (PGM/ISTA)**: forward-backward splitting with a single smooth function with a Lipschitz-continuous gradient and a single (non-smooth) penalty function. Optional multi-block optimization, Nesterov acceleration (FISTA), and Barzilai-Borwein steps.
+* **Proximal Adam and derivatives (AdamX, AMSGrad, PAdam, NAdam)**: forward-backward splitting with adaptive gradient steps for single- and multi-block optimization.
+* **Alternating Direction Method of Multipliers (ADMM)**: Douglas-Rachford splitting for two potentially non-smooth functions. We use its linearized form to solve for linear mappings in the penalty functions.
 * **Simultaneous Direction Method of Multipliers (SDMM)**: Extension of linearized ADMM for several penalty functions.
 * **Block-Simultaneous Direction Method of Multipliers (bSDMM)**: Extension of SDMM to work with objective functions that are convex in several arguments. It's a proximal version of Block coordinate descent methods.
 
