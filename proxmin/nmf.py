@@ -61,7 +61,7 @@ def step_pgm(*X, it=None, W=1):
         step_A, step_S
     """
     A, S = X
-    if W is 1:
+    if W == 1:
         return step_A(A, S), step_S(A, S)
     else:
         C, K = A.shape
