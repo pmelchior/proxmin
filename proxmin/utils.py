@@ -6,7 +6,7 @@ def _copy_tuple(X):
 
 
 def _as_tuple(X):
-    if type(X) in [list, tuple, np.ndarray]:
+    if type(X) in [list, tuple]:
         return X
     else:
         return (X,)

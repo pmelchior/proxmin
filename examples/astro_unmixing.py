@@ -193,7 +193,7 @@ if __name__ == "__main__":
     b1 = 0.9
     b2 = 0.999
     runs = (
-        (proxmin.pgm, all_args, "PGM"),
+        (proxmin.pgm, dict(all_args, accelerated=False), "PGM"),
         (
             proxmin.adaprox,
             dict(all_args, scheme="adam", b1=b1, b2=b2, prox_max_iter=100),

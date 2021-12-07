@@ -86,6 +86,8 @@ def plotLoss(trace, Y, ax=None, label=None):
         fig = plt.figure()
         ax = fig.add_subplot(111)
     ax.semilogy(loss, label=label)
+    fig.tight_layout()
+    fig.show()
 
 
 if __name__ == "__main__":
@@ -128,7 +130,8 @@ if __name__ == "__main__":
     all_args = {"prox": prox, "max_iter": 1000, "callback": traceback, "e_rel": 1e-4}
     b1 = 0.9
     b2 = 0.999
-    pgm_args = {"accelerated": True}
+    f = lambda *X: proxmin.nmf.log_likelihood(*X, Y=Y)
+    pgm_args = {"accelerated": False, "backtracking": True, "f": f}
     adaprox_args = {"b1": b1, "b2": b2, "prox_max_iter": 100}
     runs = (
         (proxmin.pgm, dict(all_args, **pgm_args), "PGM"),
@@ -142,8 +145,8 @@ if __name__ == "__main__":
     )
 
     best_AS = None
+    best_trace = None
     best_loss = np.inf
-
     for i, alpha in enumerate([0.01, 0.1]):
         step = {
             proxmin.pgm: proxmin.nmf.step_pgm,
@@ -161,6 +164,7 @@ if __name__ == "__main__":
 
                 if loss < best_loss:
                     best_loss = loss
+                    best_trace = traceback.trace.copy()
                     best_AS = (A.copy(), S.copy())
 
             except np.linalg.LinAlgError:
@@ -168,3 +172,4 @@ if __name__ == "__main__":
 
     A, S = match(*best_AS, trueS)
     plotData(trueS, Y, S)
+    plotLoss(best_trace, Y)
