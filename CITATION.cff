@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Moolekamp"
+  given-names: "Fred"
+  orcid: "https://orcid.org/0000-0003-0093-4279"
+- family-names: "Melchior"
+  given-names: "Peter"
+  orcid: "https://orcid.org/0000-0002-8873-5065"
+title: "proxmin"
+url: "https://github.com/pmelchior/proxmin/"
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Moolekamp"
+      given-names: "Fred"
+      orcid: "https://orcid.org/0000-0003-0093-4279"
+    - family-names: "Melchior"
+      given-names: "Peter"
+      orcid: "https://orcid.org/0000-0002-8873-5065"
+  doi: "10.1007/s11081-018-9380-y"
+  journal: "Optimization and Engineering"
+  volume: 19
+  start: 871 # First page number
+  end: 885   # Last page number
+  title: "Block-simultaneous direction method of multipliers: a proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"
+  year: 2018
+  month: 3

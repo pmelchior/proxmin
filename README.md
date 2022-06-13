@@ -18,26 +18,9 @@ The algorithms:
 Two-block PGM or bSDMM is used as backend solvers for Non-negative Matrix Factorization (NMF). As the algorithms allow any proxable function as constraint on each of the matrix factors, we prefer the term Constrained Matrix Factorization.
 
 Details can be found in the [paper](https://doi.org/10.1007/s11081-018-9380-y) *"Block-Simultaneous Direction Method of Multipliers - A proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints"* by Fred Moolekamp and Peter Melchior.
+We ask that any published work that utilizes this package cite this paper.
 
-We ask that any published work that utilizes this package cites:
-```
-@ARTICLE{proxmin,
-    author="{Moolekamp}, Fred and {Melchior}, Peter",
-    title="Block-simultaneous direction method of multipliers: a proximal primal-dual splitting algorithm for nonconvex problems with multiple constraints",
-    journal="Optimization and Engineering",
-    year="2018",
-    month="Dec",
-    volume=19,
-    issue=4,
-    pages={871-885},
-    doi="10.1007/s11081-018-9380-y",
-    url="https://doi.org/10.1007/s11081-018-9380-y"
-    archivePrefix="arXiv",
-    eprint={1708.09066},
-    primaryClass="math.OC"
-}
-```
-Also, let us know (e.g. [@peter_melchior](https://twitter.com/peter_melchior)), we're curious.
+A description of the proximal Adam method is in the [paper](https://arxiv.org/abs/1910.10094) *"Proximal Adam: Robust Adaptive Update Scheme for Constrained Optimization"* by Peter Melchior, Rémy Joseph and Fred Moolekamp.
 
 ## Installation and Dependencies
 
